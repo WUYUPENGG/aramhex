@@ -207,6 +207,33 @@ Linux 包；Windows 容器在 Linux 内核上起不来；`packaging/build.ps1` �
 游戏内效果（三选一识别、浮窗盖在游戏上）**只能**在装了国服客户端的 Windows 上验，
 CI 替代不了这一条。
 
+### 2.9 出测试包（GitHub Actions）
+
+打 Windows 包的唯一路子是 GitHub Actions 的 `windows-latest`，工作流是
+`.github/workflows/package.yml`（名字「打测试包」）。两种触发：
+
+```bash
+# 1) 推标签：版本号变成 1.3.0-<标签里的 test.N>
+git tag test.2 && git push origin test.2
+# 2) Actions 页面 → 打测试包 → Run workflow，可以改测试号、取消勾选「只出便携版」
+```
+
+产物在运行页面的 Artifacts 里：
+
+| 产物 | 内容 |
+|---|---|
+| `AramHex-test.N` | 便携版 zip（默认）或安装版 exe + SHA256SUMS.txt |
+| `自检结果-test.N` | `build/gui-smoke.json`：Qt 版本、OCR 识别到的字、版本号、是否官方包 |
+
+**默认只出便携版**，因为测试包沿用官方的安装包 AppId（`packaging/LolHex.iss:14`），
+装上去会被 Windows 当成官方版的升级。要验证安装/升级流程，用 Run workflow 取消勾选。
+
+`build.ps1` 在出包前会启动打好的 exe 跑 `--self-test-gui`：Qt 的 Core/Gui/Widgets/Network、
+OpenCV、文字识别都要过，不过就不出包。所以「能出包」本身已经说明界面和 OCR 在 Windows 上能跑。
+测试包还会带一个空 `debug.txt`，解压运行即开启详细日志和自动截图（见 `packaging/build.ps1` 开头）。
+
+2026-11-28 首次出包：`test.1`，产物 127MB，两个工作流（`测试`、`打测试包`）都是 passing。
+
 ## 3. 和 GitHub Actions 的分工
 
 | 环境 | 触发 | 跑什么 | 出什么 |
