@@ -186,6 +186,27 @@ NAS 是 Linux，用 Wine 折腾不值得。正式包仍然走
 `.github/workflows/release.yml`（`windows-latest`）。
 游戏内效果（三选一识别、浮窗盖在游戏上）也只能在装了国服客户端的 Windows 上验。
 
+### 2.8 能不能在 NAS 上打 Windows 包：不能
+
+PyInstaller 不是交叉编译器，它把**当前这台机器的**解释器和平台二进制打进包里
+（`python313.dll`、PySide6 的 Qt 插件、`onnxruntime` 的 `.dll`），在 Linux 上跑只能产出
+Linux 包；Windows 容器在 Linux 内核上起不来；`packaging/build.ps1` 打完还要启动 exe 跑
+`--self-test-gui`，`packaging/package.ps1` 再调 Inno Setup（只有 Windows 版）。
+
+用 Wine 装 Windows 版 Python 再跑 PyInstaller 是唯一不换机器的路子，但 PySide6 的 Qt 插件
+和 MSVC 运行库在 Wine 下很容易崩，自检那步还要 Windows GUI，出问题的概率远高于省下的时间。
+
+三条可选的路：
+
+| 方案 | 代价 | 适合 |
+|---|---|---|
+| GitHub Actions `windows-latest` | 免费，fork 里 Actions 默认是关的，要去 Settings → Actions 打开 | 偶尔出包，推荐 |
+| 一台 Windows 机器做 Jenkins agent | 要有机器，但能顺便做真机验证（国服客户端 + 浮窗） | 经常出包、要验游戏内效果 |
+| Wine | 高失败率 | 不建议 |
+
+游戏内效果（三选一识别、浮窗盖在游戏上）**只能**在装了国服客户端的 Windows 上验，
+CI 替代不了这一条。
+
 ## 3. 和 GitHub Actions 的分工
 
 | 环境 | 触发 | 跑什么 | 出什么 |
