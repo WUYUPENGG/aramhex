@@ -19,6 +19,12 @@ pipeline {
         disableConcurrentBuilds()
     }
 
+    // 没有配 webhook（GitLab 那边要 Jenkins 的 GitLab API token 凭据，加凭据要管理员权限），
+    // 先用轮询：push 之后 5 分钟内会自己跑起来。
+    triggers {
+        pollSCM('H/5 * * * *')
+    }
+
     environment {
         IMAGE = 'aramhex-ci:py313'
         // NAS 到 deb.debian.org / pypi.org 都不稳，走清华源（实测 20MB/s / 12MB/s）

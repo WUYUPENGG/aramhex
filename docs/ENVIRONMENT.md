@@ -79,7 +79,7 @@ macOS/Linux 的回退字体度量带小数，就截了。**这是 Windows 上看
 | `github.com` | 8s 只下来 350KB |
 | `codeload.github.com` 仓库 tarball | 120s 只下来 2.1MB，约 17KB/s |
 | `pypi.org` / `pypi.tuna.tsinghua.edu.cn` | 正常，2.1s / 1.2s |
-| `registry-1.docker.io` | 直连超时，但 daemon 配了 `docker.fnnas.com` 加速，拉基础镜像走这个 |
+| `registry-1.docker.io` | 直连超时；daemon 配的 `docker.fnnas.com` 也没跑通，基础镜像只能离线搬（见 2.4 ③） |
 | NAS 上的 mihomo（`mixed-port: 6000`） | 国内站正常，**GitHub 仍走直连**，等于没代理 |
 
 所以 CI 的源码从**局域网**拿：Mac 推到 NAS 的 GitLab，Jenkins 从 GitLab clone（秒级）。
@@ -88,43 +88,93 @@ macOS/Linux 的回退字体度量带小数，就截了。**这是 Windows 上看
 
 流水线文件是仓库根目录的 `Jenkinsfile`，实际干活的是两个文件：
 
-- `docker/ci/Dockerfile`：`python:3.13-slim` + `fonts-noto-cjk` + PySide6 需要的运行库 +
-  `git`（`test_release_data` 要调 git）+ `requirements.txt`。依赖单独一层，改源码不用重建镜像。
-- `docker/ci/run-tests.sh`：`docker run` 的所有参数（挂源码、`-u $(id -u):$(id -g)`、
-  `USER=ci`、`QT_QPA_PLATFORM=offscreen`、`--junitxml=build/ci/junit.xml`）都收在这一个文件里，
+- `docker/ci/Dockerfile`：`python:3.13-slim` + `fonts-noto-cjk` + PySide6 运行库 +
+  `git`（`test_release_data` 要调 git）+ `requirements.txt`，最后把源码 `COPY` 进去。
+- `docker/ci/run-tests.sh`：建镜像、跑测试、把 `build/ci/junit.xml` 从容器里 `docker cp` 出来。
   Jenkins、本机、以后的 CI 都用它，参数只有一份。
 
-> `USER=ci` 不能省：容器里没有 passwd 记录，`getpass.getuser()` 抛 `OSError: No username set`，
-> `test_run_smoke::test_run_starts` 会红。
-
-本机也能跑同一套（验证镜像用）：
+本机也能跑同一套：
 
 ```bash
-docker build -t aramhex-ci:py313 -f docker/ci/Dockerfile .
-docker/ci/run-tests.sh              # 等价于 NAS 上 Jenkins 干的事
+docker/ci/run-tests.sh                          # 和 NAS 上 Jenkins 干的事一样
+APT_MIRROR=mirrors.tuna.tsinghua.edu.cn \
+PIP_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple docker/ci/run-tests.sh   # 国内网络
 ```
 
-2026-11-27 在 `linux/amd64` 容器里的结果：`1254 passed, 24 skipped`，和 Mac 一致
-（同一批 Windows 测试跳过）。
+实测：`1254 passed, 24 skipped`，和 Mac 上一模一样（同一批 Windows 测试跳过）。
 
-### 2.4 Jenkins 作业
+### 2.4 踩过的四个坑（都已解决，改之前先看这里）
+
+**① `agent any` 会被派到 Mac 上。** NAS 的 Jenkins 挂了一个 `mac-agent` 节点（就是这台 Mac，
+SSH 到 192.168.31.43），`agent any` 会挑它。`Jenkinsfile` 里必须写 `agent { label 'built-in' }`。
+
+**② `docker run -v 源码目录` 会挂成空目录。** Jenkins 跑在容器里，它的 `/var/jenkins_home`
+在宿主上是 `/vol2/@appdata/1Panel/1panel/apps/jenkins/jenkins/data`。docker 客户端把
+`/var/jenkins_home/workspace/...` 交给宿主的 daemon，宿主管这个路径叫别的名字，于是挂了个空目录，
+pytest 报 `no tests ran in 0.00s`（exit code 5）。所以源码改成 `COPY` 进镜像，
+测试报告用 `docker cp` 取出来。**不要退回挂卷的做法。**
+
+**③ NAS 拉不到 Docker Hub。** `registry-1.docker.io` 直连超时；daemon 里配的加速
+`docker.fnnas.com` 需要 token 握手，`docker build` 试完就回落到官方源并失败。
+Docker Hub 的中转站（`docker.1panel.live`）能匿名拿 manifest，但层下载实测 8MB 要 2 分钟以上。
+**结论：基础镜像离线搬过去，搬一次就够了。**
+
+```bash
+# 在 Mac 上（arm 机器要显式拉 amd64）
+docker pull --platform linux/amd64 python:3.13-slim
+docker save python:3.13-slim | gzip -1 > python-313-slim-amd64.tar.gz
+scp python-313-slim-amd64.tar.gz wuyupeng123@192.168.31.159:/vol2/@appdata/1Panel/1panel/apps/jenkins/jenkins/data/ci-src/
+# 在 NAS 上（docker 要 root，所以借 Jenkins 跑一次，或者 sudo）
+docker load -i <jenkins_home>/ci-src/python-313-slim-amd64.tar.gz
+```
+
+镜像已经在 NAS 上了（`python:3.13-slim`，amd64，118MB）。tar 包留在 Jenkins 的
+`ci-src/` 目录里，`docker image prune` 清掉了可以再 `docker load` 一次。
+`Jenkinsfile` 的自检阶段会检查这个镜像在不在，不在就直接报错并指向这一节。
+
+**④ 源站速度差别巨大。** 同一时刻：`deb.debian.org` 21KB/s（`apt-get update` 会卡死），
+清华 20MB/s；`pypi.org` 的索引还会被截断，清华 12MB/s。所以 `run-tests.sh` 把
+apt/pip 源做成了 build-arg，Jenkins 里传清华源。**注意**：换源参数不同会让 apt/pip 那两层
+缓存失效，重建一次大约 2 分钟。
+
+### 2.5 Jenkins 作业
 
 | 项 | 值 |
 |---|---|
+| 名称 | `aramhex`，`http://192.168.31.159:8080/job/aramhex/` |
 | 类型 | Pipeline script from SCM |
-| 仓库 | `http://192.168.31.159:9980/<你的命名空间>/aramhex.git`，凭据用现成的 `gitlab-http-creds` |
-| 分支 | `main` |
+| 仓库 | `http://192.168.31.159:9980/wuyupeng/aramhex.git`，凭据 `gitlab-http-creds`（FNOS GitLab oauth2 PAT，已能用） |
+| 分支 | 现在是 `docs/handoff`。合并到 main 之后要改成 `main`（见下） |
 | 脚本路径 | `Jenkinsfile` |
-| 触发 | GitLab push（`gitlab-plugin` 已装），或定时轮询 |
-| 产物 | `build/ci/junit.xml`（测试报告）、构建日志 |
+| 触发 | `pollSCM`，5 分钟轮询一次；也可以点「立即构建」 |
+| 产物 | `build/ci/junit.xml`（Jenkins 里看测试报告） |
 
-流水线只做三件事：自检 docker → 构建测试镜像（有 layer 缓存）→ 跑 `docker/ci/run-tests.sh`，
-然后把 junit 报告收进 Jenkins。
+流水线只做两件事：自检（docker、基础镜像在不在）→ 跑 `docker/ci/run-tests.sh`。
+实测一次构建 142 秒，其中测试 101 秒。
 
-### 2.5 NAS 出不了 Windows 安装包
+**合并之后**，把分支从 `docs/handoff` 改成 `main`：
+
+```bash
+# Jenkins 界面：Job → Configure → Branch Specifier 改成 */main
+# 或者用 API（把 XML 里的 <name>docs/handoff</name> 换成 <name>main</name> 再 POST）
+```
+
+### 2.6 源码怎么进 NAS：推一份到 GitLab
+
+`scripts/sync_gitlab.sh` 把本仓库的分支和标签推到 NAS 的 GitLab
+（`http://192.168.31.159:9980/wuyupeng/aramhex.git`，public，备份 + 给 Jenkins 取源码）。
+GitHub 仍然是主仓库。
+
+```bash
+GITLAB_REPO=http://192.168.31.159:9980/wuyupeng/aramhex.git scripts/sync_gitlab.sh
+```
+
+脚本不存密码，凭据走 git 自己的凭据机制。
+
+### 2.7 NAS 出不了 Windows 安装包
 
 `packaging/` 下的脚本用 PyInstaller 和 Inno Setup，只能在 Windows 上跑；
-NAS 是 Linux，最多用 Wine 折腾，不值得。正式包仍然走
+NAS 是 Linux，用 Wine 折腾不值得。正式包仍然走
 `.github/workflows/release.yml`（`windows-latest`）。
 游戏内效果（三选一识别、浮窗盖在游戏上）也只能在装了国服客户端的 Windows 上验。
 
@@ -133,7 +183,7 @@ NAS 是 Linux，最多用 Wine 折腾，不值得。正式包仍然走
 | 环境 | 触发 | 跑什么 | 出什么 |
 |---|---|---|---|
 | GitHub Actions `ci.yml` | push main / PR | Windows 全量测试（含 18 个 Windows-only） | 无 |
-| NAS Jenkins `aramhex` | push 到 GitLab | Linux 全量测试（18 个 Windows-only 跳过） | junit 报告 |
+| NAS Jenkins `aramhex` | 每 5 分钟轮询 GitLab | Linux 全量测试（18 个 Windows-only 跳过） | junit 报告 |
 | GitHub Actions `release.yml` | 推 `v*` 标签 | 版本号核对、资料检查、测试 | **没有打包步骤**（1.3.0 起官方包在别处打） |
 
 要自己出安装包，得按 `docs/HANDOFF.md` 第 9 节的顺序来：先补标签，再改 `release.yml`。
