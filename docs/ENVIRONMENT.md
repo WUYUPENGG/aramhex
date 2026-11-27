@@ -250,37 +250,44 @@ OpenCV、文字识别都要过，不过就不出包。所以「能出包」本�
 2026-11-28 首次出包：`test.3`（`test.1`/`test.2` 是调 workflow 时的中间产物，`test.2` 那个
 release 是空的可以删掉），便携版 zip 128MB，sha256 `2bf7c15c…a3ed`，两个工作流都是 passing。
 
-### 2.10 GitHub → NAS GitLab 的自动镜像
+### 2.10 GitHub 和 NAS GitLab 怎么同步：一条 push 推两边
 
-Jenkins 只看 GitLab，但大家只推 GitHub，所以中间有一层自动搬运：
-`.github/workflows/mirror.yml`。任何 push（分支和标签）都会在几十秒内把 GitHub 上的
-`refs/remotes/origin/*` 和所有标签推到 `wuyupeng/aramhex`，GitLab 的 webhook 随即触发 Jenkins。
-
-**不要再手动推 GitLab**，两边会抢 ref。补历史遗留时才用 `scripts/sync_gitlab.sh`。
-
-需要 GitHub 仓库的一个 secret：
-
-| Secret | 值 |
-|---|---|
-| `GITLAB_TOKEN` | GitLab 项目 `wuyupeng/aramhex` 的 **project access token**，scope `write_repository`，到期日不能超过一年 |
-
-生成方式（GitLab 19.4 实测）：
+Jenkins 只看 GitLab（拉 GitHub 只有 17KB/s），但代码要在 GitHub 上公开、发 Release。
+两边都要有，所以 `origin` 挂了**两个 pushurl**：
 
 ```bash
-# 注意：个人 PAT 和 deploy token 的 write_repository 在这个版本上都报
+git remote set-url --add --push origin https://github.com/WUYUPENGG/aramhex.git
+git remote set-url --add --push origin http://oauth2@192.168.31.159:9980/wuyupeng/aramhex.git
+```
+
+之后 `git push origin main` / `git push origin test.4` 会依次推两个远端，GitLab 收到后
+webhook 立刻触发 Jenkins。校验：
+
+```bash
+git ls-remote origin refs/heads/main | cut -c1-7                                   # GitHub
+git ls-remote http://192.168.31.159:9980/wuyupeng/aramhex.git refs/heads/main | cut -c1-7  # GitLab
+```
+
+GitLab 的凭据存在 macOS 钥匙串（`git config --local credential.helper osxkeychain`），
+用的是项目 `wuyupeng/aramhex` 的 **project access token**（scope `write_repository`，
+到期 2027-11-01）。换 token 时用这条命令覆盖钥匙串：
+
+```bash
+# GitLab 19.4 实测：个人 PAT 和 deploy token 建 write_repository 都会报
 # "scopes does not have a valid value"，只有 project access token 能建
 curl -X POST "http://192.168.31.159:9980/api/v4/projects/4/access_tokens" \
   -H "X-CSRF-Token: <网页会话的 csrf-token>" -b <cookie jar> \
-  --data-urlencode "name=github-mirror" \
-  --data-urlencode "expires_at=2027-11-01" \
+  --data-urlencode "name=mac-push" --data-urlencode "expires_at=2027-11-01" \
   --data "scopes[]=write_repository"
+
+# 存进钥匙串
+printf "protocol=http\nhost=192.168.31.159:9980\nusername=oauth2\npassword=<token>\n\n" \
+  | git credential-osxkeychain store
 ```
 
-推送时用 `http://oauth2:<token>@<host>/<path>.git` 这种写法（GitLab 认 `oauth2` 当用户名）。
-现有 token 到期日 2027-11-01，换的时候记得同步改 GitHub 的 secret。
-
-没配 secret 时这个 workflow 只 warn 不报错，其余 CI 照常，所以 fork 别人仓库不会因为
-缺凭据变红。
+> 曾经用 `.github/workflows/mirror.yml` 让 GitHub Actions 自动镜像到 GitLab，为了少维护
+> 一个 GitHub secret 和一个 workflow 又撤掉了（提交 `c92341d` 里有历史版本）。
+> 现在就是一条 push 推两边，出问题一眼能看出来是哪边失败。
 
 ## 3. 和 GitHub Actions 的分工
 
