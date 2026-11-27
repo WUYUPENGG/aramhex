@@ -86,14 +86,23 @@ git ls-remote http://192.168.31.159:9980/wuyupeng/aramhex.git refs/heads/main | 
     换源参数不同会让缓存失效，重建约 2 分钟。
 14. Jenkins 作业必须钉 `agent { label 'built-in' }`：这个 Jenkins 还挂了一个 `mac-agent`
     节点（就是开发用的 Mac），`agent any` 会把构建派到 Mac 上去。
+15. **本机访问 GitHub 走代理 `127.0.0.1:7897`**，已经写进全局 git 配置：
+
+    ```bash
+    git config --global http.https://github.com/.proxy http://127.0.0.1:7897
+    ```
+
+    所以 `git pull` / `git fetch` / `git push origin` 不用再带 `-c http.proxy=...` 参数，
+    实测 1.3 秒拉完。**代理没开时 pull 会卡到超时**，先确认 Clash（7897 端口）在跑。
+    只对 github.com 生效，局域网 GitLab 直连，不绕代理。
 
 ## 4. 不能做的事
 
-15. **不碰游戏客户端**：不连 LCU、不走 2999 端口、不读内存、不注入、不模拟按键。
+16. **不碰游戏客户端**：不连 LCU、不走 2999 端口、不读内存、不注入、不模拟按键。
     只截屏识别 + 显示。理由见 `docs/HANDOFF.md` 第 1 节。
-16. **不把凭据写进仓库**：GitLab 的推送凭据放 macOS 钥匙串，GitHub 的放 GitHub Secrets；
+17. **不把凭据写进仓库**：GitLab 的推送凭据放 macOS 钥匙串，GitHub 的放 GitHub Secrets；
     密码/token 不进代码、不进 `git config` 明文、不进 CI 日志。
-17. **不加广告、不做商用功能**：许可证要求非商用，数据源是 CC BY-NC 4.0，
+18. **不加广告、不做商用功能**：许可证要求非商用，数据源是 CC BY-NC 4.0，
     界面上要保留署名 `海克斯大乱斗统计数据（github.com/czgreat/aramhex-data），CC BY-NC 4.0`。
 
 ## 5. 待办（按顺序）
