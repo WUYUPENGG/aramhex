@@ -144,20 +144,28 @@ apt/pip 源做成了 build-arg，Jenkins 里传清华源。**注意**：换源�
 | 名称 | `aramhex`，`http://192.168.31.159:8080/job/aramhex/` |
 | 类型 | Pipeline script from SCM |
 | 仓库 | `http://192.168.31.159:9980/wuyupeng/aramhex.git`，凭据 `gitlab-http-creds`（FNOS GitLab oauth2 PAT，已能用） |
-| 分支 | 现在是 `docs/handoff`。合并到 main 之后要改成 `main`（见下） |
+| 分支 | `main` |
 | 脚本路径 | `Jenkinsfile` |
-| 触发 | `pollSCM`，5 分钟轮询一次；也可以点「立即构建」 |
+| 触发 | GitLab webhook（push 即建）+ `pollSCM` 5 分钟兜底 |
 | 产物 | `build/ci/junit.xml`（Jenkins 里看测试报告） |
 
 流水线只做两件事：自检（docker、基础镜像在不在）→ 跑 `docker/ci/run-tests.sh`。
 实测一次构建 142 秒，其中测试 101 秒。
 
-**合并之后**，把分支从 `docs/handoff` 改成 `main`：
+**webhook**：GitLab 项目 → Settings → Webhooks 里有一条
+`http://192.168.31.159:8080/project/aramhex`，push 事件，Secret token 和 Jenkins 作业里
+`GitLabPushTrigger` 的 `<secretToken>` 是同一个值（Jenkins 侧已加密存储）。
+加 webhook 用的是 GitLab 的 API：
 
 ```bash
-# Jenkins 界面：Job → Configure → Branch Specifier 改成 */main
-# 或者用 API（把 XML 里的 <name>docs/handoff</name> 换成 <name>main</name> 再 POST）
+curl -X POST "http://192.168.31.159:9980/api/v4/projects/4/hooks" \
+  -H "X-CSRF-Token: <网页会话的 csrf-token>" -b <cookie jar> \
+  --data-urlencode "url=http://192.168.31.159:8080/project/aramhex" \
+  --data-urlencode "token=<和 Jenkins 里一致>" \
+  --data-urlencode "push_events=true"
 ```
+
+`pollSCM` 留着当兜底：webhook 丢了也会在 5 分钟内自己跑起来。
 
 ### 2.6 源码怎么进 NAS：推一份到 GitLab
 
