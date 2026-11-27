@@ -250,6 +250,38 @@ OpenCV、文字识别都要过，不过就不出包。所以「能出包」本�
 2026-11-28 首次出包：`test.3`（`test.1`/`test.2` 是调 workflow 时的中间产物，`test.2` 那个
 release 是空的可以删掉），便携版 zip 128MB，sha256 `2bf7c15c…a3ed`，两个工作流都是 passing。
 
+### 2.10 GitHub → NAS GitLab 的自动镜像
+
+Jenkins 只看 GitLab，但大家只推 GitHub，所以中间有一层自动搬运：
+`.github/workflows/mirror.yml`。任何 push（分支和标签）都会在几十秒内把 GitHub 上的
+`refs/remotes/origin/*` 和所有标签推到 `wuyupeng/aramhex`，GitLab 的 webhook 随即触发 Jenkins。
+
+**不要再手动推 GitLab**，两边会抢 ref。补历史遗留时才用 `scripts/sync_gitlab.sh`。
+
+需要 GitHub 仓库的一个 secret：
+
+| Secret | 值 |
+|---|---|
+| `GITLAB_TOKEN` | GitLab 项目 `wuyupeng/aramhex` 的 **project access token**，scope `write_repository`，到期日不能超过一年 |
+
+生成方式（GitLab 19.4 实测）：
+
+```bash
+# 注意：个人 PAT 和 deploy token 的 write_repository 在这个版本上都报
+# "scopes does not have a valid value"，只有 project access token 能建
+curl -X POST "http://192.168.31.159:9980/api/v4/projects/4/access_tokens" \
+  -H "X-CSRF-Token: <网页会话的 csrf-token>" -b <cookie jar> \
+  --data-urlencode "name=github-mirror" \
+  --data-urlencode "expires_at=2027-11-01" \
+  --data "scopes[]=write_repository"
+```
+
+推送时用 `http://oauth2:<token>@<host>/<path>.git` 这种写法（GitLab 认 `oauth2` 当用户名）。
+现有 token 到期日 2027-11-01，换的时候记得同步改 GitHub 的 secret。
+
+没配 secret 时这个 workflow 只 warn 不报错，其余 CI 照常，所以 fork 别人仓库不会因为
+缺凭据变红。
+
 ## 3. 和 GitHub Actions 的分工
 
 | 环境 | 触发 | 跑什么 | 出什么 |

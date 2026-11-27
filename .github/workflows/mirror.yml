@@ -1,0 +1,71 @@
+# 把 GitHub 的提交和标签镜像到 NAS 上的 GitLab。
+#
+# 为什么要这一层：Jenkins 在 NAS 内网，拉 github.com 只有 17KB/s（实测），
+# 所以它只看 GitLab。GitHub 仍是主仓库，改了代码由这里自动搬到 GitLab，
+# 搬过去之后 GitLab 的 webhook 立刻触发 Jenkins 构建。
+#
+# 没配 secret 时这一步只 warn 不红：fork 别人仓库、或者刚 clone 下来还没配
+# 凭据的情况下，不该因为镜像挂了整个 CI 就红。
+#
+# 需要的 secret：GITLAB_TOKEN = GitLab 项目 wuyupeng/aramhex 的
+# project access token（scope: write_repository）。见 docs/ENVIRONMENT.md 2.10。
+name: 镜像到 NAS GitLab
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同一时间只跑一个：两个镜像任务并发推同一个远端会互相抢 ref
+concurrency:
+  group: mirror-to-gitlab
+  cancel-in-progress: false
+
+env:
+  GITLAB_REPO: 192.168.31.159:9980/wuyupeng/aramhex.git
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # 要全部分支和标签才能镜像，浅克隆不够
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: 推到 GitLab
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          set -eu
+          if [ -z "${GITLAB_TOKEN:-}" ]; then
+            echo "::warning::没有配置 GITLAB_TOKEN，跳过镜像。配法见 docs/ENVIRONMENT.md 2.10"
+            exit 0
+          fi
+          echo "::add-mask::${GITLAB_TOKEN}"
+
+          # checkout 会留一个 refs/remotes/origin/HEAD 符号引用，不删掉会被当成
+          # 一个叫 HEAD 的分支推过去
+          git remote set-head origin --delete 2>/dev/null || true
+
+          # 用 token 当密码、oauth2 当用户名（GitLab 认这种写法）
+          remote="http://oauth2:${GITLAB_TOKEN}@${GITLAB_REPO}"
+          git remote add gitlab "$remote"
+
+          # 分支：按远端跟踪分支推，带 --prune（GitHub 删了的分支 GitLab 也删）
+          # 标签：单独推一次
+          for attempt in 1 2 3; do
+            if git push --prune gitlab '+refs/remotes/origin/*:refs/heads/*' && git push gitlab --tags; then
+              echo "镜像完成：$(git rev-parse --short HEAD)"
+              exit 0
+            fi
+            echo "第 $attempt 次推送失败，10 秒后重试（NAS 可能没开机）"
+            sleep 10
+          done
+          echo "::error::镜像到 GitLab 失败，Jenkins 不会收到这次提交"
+          exit 1
