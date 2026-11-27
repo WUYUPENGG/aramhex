@@ -119,6 +119,7 @@ git ls-remote http://192.168.31.159:9980/wuyupeng/aramhex.git refs/heads/main | 
 | 文件 | 讲什么 |
 |---|---|
 | `docs/HANDOFF.md` | 项目来龙去脉、调研结论、后续 8 项工作、打包的坑 |
+| `docs/ROADMAP.md` | 界面重构和新功能的可行性、从哪下手、没验证的事 |
 | `docs/ENVIRONMENT.md` | 两套环境怎么搭、CI 怎么跑、踩过的坑、出包和下载 |
 | `docs/DEVELOPMENT.md` | 目录结构、代码原则、测试、打包、发版流程 |
 | `CHANGELOG.md` | 每个版本改了什么 |
