@@ -1,0 +1,9 @@
+# 构建上下文只需要 requirements.txt 和源码；.venv/.git 有几百 MB，别往 docker 里塞
+.venv/
+.git/
+build/
+dist/
+.tools/
+__pycache__/
+.pytest_cache/
+*.pyc
