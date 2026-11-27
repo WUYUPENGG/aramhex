@@ -1,12 +1,15 @@
-# 手动出 Windows 测试包。只能在 Windows 上打：PyInstaller 不是交叉编译器，
+# 出 Windows 测试包。只能在 Windows 上打：PyInstaller 不是交叉编译器，
 # NAS 是 Linux，打不出 exe（见 docs/ENVIRONMENT.md 2.8）。
 #
-# 用法：Actions → 打测试包 → Run workflow。
+# 两种触发方式：
+#   1. 推一个 test.<数字> 标签：git tag test.1 && git push origin test.1
+#   2. Actions → 打测试包 → Run workflow（可以改测试号、勾选是否只出便携版）
+#
 # 产物在本次运行的 Artifacts 里：便携版 zip（默认）、安装版 exe、SHA256SUMS.txt。
 #
 # 为什么默认只出便携版：测试包沿用官方的安装包 AppId，
 # 真装了会被 Windows 当成官方版的升级（docs/HANDOFF.md 9.2）。
-# 要验证安装/升级流程再手动取消勾选。
+# 要验证安装/升级流程，用 Run workflow 并取消勾选「只出便携版」。
 name: 打测试包
 
 on:
@@ -24,6 +27,8 @@ on:
         description: '打包前先跑测试'
         type: boolean
         default: true
+  push:
+    tags: ["test.*"]
 
 permissions:
   contents: read
@@ -41,6 +46,24 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # 标签触发时 inputs 是空的，这里统一成一组输出，后面只用这些
+      - name: 解析参数
+        id: params
+        run: |
+          $tag = '${{ inputs.test_tag }}'
+          if (-not $tag) { $tag = '${{ github.ref_name }}' }
+          if ($tag -notmatch '^test\.\d+$') { throw "测试标记必须写成 test.<数字>，现在是「$tag」" }
+
+          $portable = '${{ inputs.portable_only }}'
+          if (-not $portable) { $portable = 'true' }   # 标签触发默认只出便携版
+          $tests = '${{ inputs.run_tests }}'
+          if (-not $tests) { $tests = 'true' }
+
+          "test_tag=$tag"      | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "portable_only=$portable" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "run_tests=$tests"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "测试标记 $tag；只出便携版：$portable；先跑测试：$tests"
+
       - uses: actions/setup-python@v6
         with:
           # 和正式版一致：Python 一变 python313.dll 就变，老用户没法增量更新
@@ -51,19 +74,19 @@ jobs:
         run: python -m pip install -r requirements-build.txt
 
       - name: 测试
-        if: ${{ inputs.run_tests }}
+        if: ${{ steps.params.outputs.run_tests == 'true' }}
         env:
           QT_QPA_PLATFORM: offscreen
         run: python -m pytest -q
 
       - name: 安装 Inno Setup
-        if: ${{ !inputs.portable_only }}
+        if: ${{ steps.params.outputs.portable_only != 'true' }}
         run: choco install innosetup --no-progress -y
 
       - name: 打包
         run: |
-          $buildArgs = @('-PythonExe', 'python', '-TestTag', '${{ inputs.test_tag }}')
-          if ('${{ inputs.portable_only }}' -eq 'true') { $buildArgs += '-PortableOnly' }
+          $buildArgs = @('-PythonExe', 'python', '-TestTag', '${{ steps.params.outputs.test_tag }}')
+          if ('${{ steps.params.outputs.portable_only }}' -eq 'true') { $buildArgs += '-PortableOnly' }
           Write-Host "打包参数：$($buildArgs -join ' ')"
           pwsh -NoProfile -File packaging/build.ps1 @buildArgs
           if ($LASTEXITCODE) { throw "打包失败，退出码 $LASTEXITCODE" }
@@ -83,13 +106,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: 自检结果-${{ inputs.test_tag }}
+          name: 自检结果-${{ steps.params.outputs.test_tag }}
           path: build/gui-smoke.json
           if-no-files-found: warn
 
       - name: 上传安装包
         uses: actions/upload-artifact@v4
         with:
-          name: AramHex-${{ inputs.test_tag }}
+          name: AramHex-${{ steps.params.outputs.test_tag }}
           path: build/release/*
           if-no-files-found: error
