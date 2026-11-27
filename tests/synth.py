@@ -12,7 +12,10 @@ FONT = r"C:\Windows\Fonts\msyh.ttc"
 
 
 def _font(path: str, size: int):
-    for p in (path, FONT, "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    for p in (path, FONT,
+              "/System/Library/Fonts/Hiragino Sans GB.ttc",          # macOS
+              "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",  # macOS
+              "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
               "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"):
         if os.path.exists(p):
             return ImageFont.truetype(p, size)

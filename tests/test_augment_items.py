@@ -1,8 +1,17 @@
+import os
+
 from conftest import render_in_game
 from lolhex import recommend
 from lolhex.data.public import Dataset
 from test_public import _add_file
 import pytest
+
+# 这条断言比的是文字拼接，但实际绘制时 stat 列宽正好等于文字宽度，
+# 只有整数字体度量的微软雅黑（Windows）才不会被 elidedText 截断；
+# macOS/Linux 的回退字体度量带小数，会被截掉尾巴。Windows CI 上照常跑。
+needs_windows_font = pytest.mark.skipif(
+    not os.path.exists(r"C:\Windows\Fonts\msyh.ttc"),
+    reason="依赖微软雅黑的整数度量，别的字体会被 elidedText 截断")
 
 
 def test_custom_equipment_optional_rates_order_and_validation(store):
@@ -138,6 +147,7 @@ def test_destiny_display_controls_do_not_drop_counts_and_respect_hidden_rates(st
     ({}, False, ""),
     ({"show_sample_size": True}, False, "2,000局"),
 ])
+@needs_windows_font
 def test_destiny_overlay_renders_only_requested_statistics(options, show_win, expected):
     from PySide6.QtCore import QRect
     from PySide6.QtGui import QFont, QFontMetrics

@@ -92,7 +92,8 @@
 
 | 顺序 | 工作 | 内容 | 在哪做 |
 |---|---|---|---|
-| 0 | Mac 环境（可选） | 用 Homebrew 装 Python 3.13，建虚拟环境装依赖，跑测试，确认多少能在 Mac 上通过 | Mac |
+| 0 | Mac 环境（已完成） | 已用 uv 建 arm64 Python 3.13 虚拟环境，测试 1254 通过 / 24 跳过。步骤和踩过的坑见 `docs/ENVIRONMENT.md` | Mac |
+| 0.5 | NAS CI（已完成） | 飞牛 NAS 上的 Jenkins + Docker 跑 Linux 测试，`Jenkinsfile` + `docker/ci/`。只跑测试，不出包，见 `docs/ENVIRONMENT.md` 第 2 节 | NAS |
 | 1 | 仓库准备 | 把 czgreat/aramhex 加为上游，新建开发分支，不直接改 main | Mac |
 | 2 | Windows 环境 | 装 Python 3.13 和依赖，从源码运行，跑测试，进一局游戏确认识别和浮窗正常 | Windows |
 | 3 | 改名换图标 | 见下方清单 | Mac 改，Windows 验证 |
