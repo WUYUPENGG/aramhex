@@ -218,12 +218,27 @@ git tag test.2 && git push origin test.2
 # 2) Actions 页面 → 打测试包 → Run workflow，可以改测试号、取消勾选「只出便携版」
 ```
 
-产物在运行页面的 Artifacts 里：
+产物有两个地方能拿：
 
-| 产物 | 内容 |
-|---|---|
-| `AramHex-test.N` | 便携版 zip（默认）或安装版 exe + SHA256SUMS.txt |
-| `自检结果-test.N` | `build/gui-smoke.json`：Qt 版本、OCR 识别到的字、版本号、是否官方包 |
+| 位置 | 要不要登录 | 内容 |
+|---|---|---|
+| **Release 页面**：`https://github.com/WUYUPENGG/aramhex/releases/tag/test.N` | 不用 | `AramHex-Portable-1.3.0-test.N.zip`（约 128MB）+ `SHA256SUMS.txt` |
+| 运行页面的 Artifacts：`Actions → 打测试包 → 最近一次运行` | 要 | 同一个 zip（套多一层，且整份产物被 GitHub 再压一次）+ `自检结果-test.N`（`gui-smoke.json`：Qt 版本、OCR 读到什么字） |
+
+推标签的包会自动建成一个 **prerelease**，所以正式版的「最新版本」不会被测试包顶掉。
+直链形如：
+
+```
+https://github.com/WUYUPENGG/aramhex/releases/download/test.N/AramHex-Portable-1.3.0-test.N.zip
+```
+
+> 别用手写 `gh release create ... @files` 上传产物：那版建出来是个空 release（只有自动的
+> Source code），`$files` 在 PowerShell 里没展开也不报错。现在用
+> `softprops/action-gh-release` 按 glob 传，配上 `fail_on_unmatched_files: true`，缺文件直接红。
+
+便携版解压后跑 `AramHex.exe`。zip 里带 `portable.txt`，所以配置、日志、截图都在
+**解压目录的 `userdata\\`** 下（`aramhex.log`、`screenshots\\`），不写 `%APPDATA%`。
+测试包还带空的 `debug.txt`：详细日志 + 三选一/选英雄时自动截图。
 
 **默认只出便携版**，因为测试包沿用官方的安装包 AppId（`packaging/LolHex.iss:14`），
 装上去会被 Windows 当成官方版的升级。要验证安装/升级流程，用 Run workflow 取消勾选。
@@ -232,7 +247,8 @@ git tag test.2 && git push origin test.2
 OpenCV、文字识别都要过，不过就不出包。所以「能出包」本身已经说明界面和 OCR 在 Windows 上能跑。
 测试包还会带一个空 `debug.txt`，解压运行即开启详细日志和自动截图（见 `packaging/build.ps1` 开头）。
 
-2026-11-28 首次出包：`test.1`，产物 127MB，两个工作流（`测试`、`打测试包`）都是 passing。
+2026-11-28 首次出包：`test.3`（`test.1`/`test.2` 是调 workflow 时的中间产物，`test.2` 那个
+release 是空的可以删掉），便携版 zip 128MB，sha256 `2bf7c15c…a3ed`，两个工作流都是 passing。
 
 ## 3. 和 GitHub Actions 的分工
 
