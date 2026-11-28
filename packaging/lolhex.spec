@@ -34,7 +34,7 @@ a = Analysis(
     datas=datas,
     hiddenimports=["lolhex.ui.overlay", "lolhex.vision.detector", "lolhex.vision.capture", "lolhex.vision.ocr",
                    "lolhex.vision.shop", "lolhex.vision.loading", "lolhex.vision.teammates",
-                   "lolhex.item_rules", "lolhex.ui.mainwindow", "lolhex.ui.workers", "lolhex.ui.autostart",
+                   "lolhex.item_rules", "lolhex.ui.mainwindow", "lolhex.ui.cards", "lolhex.ui.workers", "lolhex.ui.autostart",
                    "PySide6.QtNetwork"] + official,
     excludes=["tkinter", "matplotlib", "IPython", "pytest"],
     noarchive=False,

@@ -18,7 +18,7 @@ from html import escape
 
 from PySide6.QtCore import QEvent, QPoint, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QCursor, QFont, QFontMetrics, QGuiApplication, QPainter, QPen, QPixmap, QRegion
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
                                QVBoxLayout, QWidget)
 
 from .. import cloud, crashlog, recommend
@@ -762,10 +762,12 @@ class ControlPanel(QWidget):
     PANEL_BG = {"standard": "#101318ee", "dark": "#d4111622", "solid": "#ff111622"}
     bg_picked = Signal(str)  # 详情里点了「背景」按钮：要换成的那档，主界面存设置、生效
     STYLE_BODY = ("QWidget#body{background:%s;border:1px solid #334155;border-radius:10px}"
+                  "QFrame#ovCard{background:rgba(15,20,32,212);border:1px solid rgba(76,163,255,60);border-radius:8px}"
+                  "QFrame#ovMate{background:rgba(20,34,56,220);border:1px solid rgba(76,163,255,95);border-radius:8px}"
                   "QLabel{color:#eef2f7;font:12px 'Microsoft YaHei UI'}"
-                  "QLineEdit{background:#0b0f17;color:#eef2f7;border:1px solid #334155;border-radius:6px;padding:4px 8px}"
+                  "QLineEdit{background:rgba(11,15,23,230);color:#eef2f7;border:1px solid #334155;border-radius:6px;padding:4px 8px}"
                   "QLineEdit:focus{border-color:#4ca3ff}"
-                  "QPushButton{background:#1b2333;color:#e6edf7;border:1px solid #334155;border-radius:6px;padding:3px 9px}"
+                  "QPushButton{background:rgba(27,35,51,230);color:#e6edf7;border:1px solid #334155;border-radius:6px;padding:3px 9px}"
                   "QPushButton:hover{border-color:#4ca3ff;background:#233047}"
                   "QPushButton[pill=\"true\"]{background:#1a2c44;color:#7ec0ff;border:1px solid #2b4870;border-radius:6px;padding:3px 9px;font-weight:600}"
                   "QPushButton[pill=\"true\"]:hover{background:#223a5c;border-color:#4ca3ff}")
@@ -826,10 +828,21 @@ class ControlPanel(QWidget):
         bl = QVBoxLayout(self.body)
         bl.setContentsMargins(10, 10, 10, 10)
         bl.setSpacing(6)
-        # 英雄：识别结果 / 候选 / 搜索手动选
+        # 英雄：高清头像 + 识别结果 / 候选 / 搜索手动选（内嵌清晰深色卡片底，透明模式下也清晰可读）
+        hero_card = QFrame()
+        hero_card.setObjectName("ovCard")
+        hc_lay = QHBoxLayout(hero_card)
+        hc_lay.setContentsMargins(8, 6, 8, 6)
+        hc_lay.setSpacing(8)
+        self.hero_avatar = QLabel()
+        self.hero_avatar.setFixedSize(36, 36)
+        self.hero_avatar.setAlignment(Qt.AlignCenter)
+        self.hero_avatar.hide()
         self.hero_label = QLabel()
         self.hero_label.setTextFormat(Qt.RichText)
         self.hero_label.setWordWrap(True)
+        hc_lay.addWidget(self.hero_avatar, 0, Qt.AlignVCenter)
+        hc_lay.addWidget(self.hero_label, 1, Qt.AlignVCenter)
         self.cands = QHBoxLayout()
         self.cands.setSpacing(4)
         self.search = QLineEdit()
@@ -848,9 +861,10 @@ class ControlPanel(QWidget):
         self.search_feedback.setStyleSheet("color:#e7c35a")
         self.search_feedback.hide()
         # 选人队友 ID 快捷复制条（识别到队友时自动显示在浮窗里，无需切回主窗口）
-        self.mate_bar = QWidget()
+        self.mate_bar = QFrame()
+        self.mate_bar.setObjectName("ovMate")
         ml = QHBoxLayout(self.mate_bar)
-        ml.setContentsMargins(0, 2, 0, 2)
+        ml.setContentsMargins(8, 5, 8, 5)
         ml.setSpacing(6)
         self.mate_label = QLabel()
         self.mate_label.setTextFormat(Qt.RichText)
@@ -863,17 +877,22 @@ class ControlPanel(QWidget):
         ml.addWidget(self.btn_copy_mates, 0, Qt.AlignVCenter)
         self._mate_names: list[str] = []
         self.mate_bar.hide()
+        info_card = QFrame()
+        info_card.setObjectName("ovCard")
+        ic_lay = QVBoxLayout(info_card)
+        ic_lay.setContentsMargins(9, 7, 9, 7)
         self.info = QLabel()
         self.info.setTextFormat(Qt.RichText)
         self.info.setWordWrap(True)
         self.info.setOpenExternalLinks(False)
         self.info.linkActivated.connect(self._link)
-        bl.addWidget(self.hero_label)
+        ic_lay.addWidget(self.info)
+        bl.addWidget(hero_card)
         bl.addLayout(self.cands)
         bl.addLayout(search_row)
         bl.addWidget(self.search_feedback)
         bl.addWidget(self.mate_bar)
-        bl.addWidget(self.info)
+        bl.addWidget(info_card)
         # 详情的背景：点一下换下一档，只有这里能换（云控 features.overlay_bg 关了不显示）
         self.bg_btn = QPushButton()
         self.bg_btn.setToolTip("详情的背景，点一下换：透明 → 半透明 → 不透明。\n"
@@ -1300,6 +1319,17 @@ class ControlPanel(QWidget):
             hero_html = self._with_hide_hint(None, None, snap)
         if self.hero_label.text() != hero_html:
             self.hero_label.setText(hero_html)
+        if hasattr(self, "hero_avatar"):
+            if h and hid:
+                from . import cards as _cards
+                pm = _cards.hero_pixmap(getattr(self.engine, "store", None), getattr(self.engine, "icons", None), hid, size=36, radius=8)
+                if not pm.isNull():
+                    self.hero_avatar.setPixmap(pm)
+                    self.hero_avatar.show()
+                else:
+                    self.hero_avatar.hide()
+            else:
+                self.hero_avatar.hide()
         self._set_candidates(snap.get("candidates") or [])
 
         parts = []
@@ -1348,6 +1378,8 @@ class ControlPanel(QWidget):
         html = "<br>".join(parts)
         if self.info.text() != html:
             self.info.setText(html)
+            self.info.adjustSize()
+            self.body.adjustSize()
             self._place_body()  # 详情变高：往下长，位置不变
 
     HIDE_HINT = "收起后按钮隐藏，鼠标移过来浮现 ↗"

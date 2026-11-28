@@ -158,6 +158,32 @@ QMainWindow#main QLabel[badge="warn"] { background: %(WARN_BG)s; color: %(WARN)s
 
 QMainWindow#main QFrame#card { background: %(CARD)s; border: 1px solid %(LINE)s; border-radius: 12px; }
 QMainWindow#main QFrame#card[best="true"] { background: %(CARD)s; border: 1px solid %(GOOD)s; border-radius: 12px; }
+QMainWindow#main QFrame#subcard { background: %(RAIL)s; border: 1px solid %(LINE)s; border-radius: 10px; }
+QMainWindow#main QFrame#ruleCard { background: %(WARN_BG)s; border: 1px solid %(WARN_BORDER)s; border-radius: 10px; }
+QMainWindow#main QFrame#itemTile { background: %(RAIL)s; border: 1px solid %(LINE)s; border-radius: 10px; }
+QMainWindow#main QFrame#itemTile:hover { border-color: %(ACCENT)s; background: %(SURFACE_HOVER)s; }
+QMainWindow#main QFrame#itemTile[next="true"] { background: %(GOOD_BG)s; border: 1.5px solid %(GOOD)s; border-radius: 10px; }
+QMainWindow#main QFrame#itemTile[owned="true"] { background: %(ACCENT_BG)s; border: 1px solid %(ACCENT)s; border-radius: 10px; }
+QMainWindow#main QFrame#itemTile[rule="true"] { background: %(WARN_BG)s; border: 1.5px solid %(WARN_BORDER)s; border-radius: 10px; }
+QMainWindow#main QFrame#augCard { background: %(RAIL)s; border: 1px solid %(LINE)s; border-radius: 10px; }
+QMainWindow#main QFrame#enemySlot { background: %(CARD)s; border: 1px dashed %(FIELD)s; border-radius: 9px; }
+QMainWindow#main QFrame#enemySlot[filled="true"] { background: %(CARD)s; border: 1px solid %(LINE)s; border-radius: 9px; }
+QMainWindow#main QLabel[chip="accent"] { background: %(ACCENT_BG)s; color: %(ACCENT)s; border-radius: 6px; padding: 2px 8px; font-size: 11.5px; font-weight: 600; }
+QMainWindow#main QLabel[chip="good"] { background: %(GOOD_BG)s; color: %(GOOD)s; border-radius: 6px; padding: 2px 8px; font-size: 11.5px; font-weight: 600; }
+QMainWindow#main QLabel[chip="warn"] { background: %(WARN_BG)s; color: %(WARN)s; border-radius: 6px; padding: 2px 8px; font-size: 11.5px; font-weight: 600; }
+QMainWindow#main QLabel[chip="prism"] { background: %(ACCENT_BG)s; color: %(PRISM)s; border-radius: 6px; padding: 2px 8px; font-size: 11.5px; font-weight: 600; }
+QMainWindow#main QLabel[chip="bad"] { background: %(RAIL)s; color: %(BAD)s; border-radius: 6px; padding: 2px 8px; font-size: 11.5px; font-weight: 600; }
+QMainWindow#main QLabel[chip="muted"] { background: %(TRACK)s; color: %(MUTED)s; border-radius: 6px; padding: 2px 8px; font-size: 11.5px; font-weight: 500; }
+QMainWindow#main QLabel[skill="primary"] { background: %(ACCENT)s; color: %(ACCENT_INK)s; border-radius: 6px; font-size: 13px; font-weight: 700; min-width: 26px; max-width: 26px; min-height: 26px; max-height: 26px; }
+QMainWindow#main QLabel[skill="secondary"] { background: %(ACCENT_BG)s; color: %(ACCENT)s; border: 1px solid %(ACCENT)s; border-radius: 6px; font-size: 13px; font-weight: 700; min-width: 26px; max-width: 26px; min-height: 26px; max-height: 26px; }
+QMainWindow#main QLabel[skill="normal"] { background: %(TRACK)s; color: %(MUTED)s; border-radius: 6px; font-size: 13px; font-weight: 600; min-width: 26px; max-width: 26px; min-height: 26px; max-height: 26px; }
+QMainWindow#main QPushButton[filter="true"] { background: %(RAIL)s; color: %(TEXT_2)s; border: 1px solid %(LINE)s; border-radius: 7px; padding: 3px 11px; font-size: 12px; min-height: 18px; }
+QMainWindow#main QPushButton[filter="true"]:hover { border-color: %(ACCENT)s; color: %(ACCENT)s; }
+QMainWindow#main QPushButton[filter="true"][active="true"] { background: %(ACCENT)s; color: %(ACCENT_INK)s; border-color: %(ACCENT)s; font-weight: 600; }
+QMainWindow#main QPushButton[heroTile="true"] { background: %(RAIL)s; color: %(TEXT)s; border: 1px solid %(LINE)s; border-radius: 10px; padding: 6px 10px; text-align: left; }
+QMainWindow#main QPushButton[heroTile="true"]:hover { background: %(ACCENT_BG)s; border-color: %(ACCENT)s; color: %(ACCENT)s; }
+QMainWindow#main QProgressBar[thin="true"] { background: %(TRACK)s; border: none; border-radius: 2px; max-height: 5px; min-height: 5px; }
+QMainWindow#main QProgressBar[thin="true"]::chunk { background: %(ACCENT)s; border-radius: 2px; }
 QMainWindow#main QFrame#rail { background: %(RAIL)s; border-right: 1px solid %(LINE)s; border-top: none; border-bottom: none; border-left: none; border-radius: 0px; }
 QMainWindow#main QFrame#railSep { background: %(LINE)s; border: none; max-height: 1px; }
 QMainWindow#main QFrame#workspaceCard { background: %(CARD)s; border: 1px solid %(LINE)s; border-radius: 12px; }

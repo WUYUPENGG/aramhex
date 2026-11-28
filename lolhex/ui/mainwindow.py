@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame, QGrid
 from .. import __version__, cloud, cloudsettings, i18n, logupload, official, patch, rank, recommend, update
 from ..config import is_portable
 from ..data.public import BANDS, norm_band
-from . import autostart, buildview, theme, workers as _workers
+from . import autostart, buildview, cards, theme, workers as _workers
 from .badgepos import POSITIONS as BADGE_POSITIONS, BadgePosPreview
 from .data_status import data_status_html
 from .herosearch import hero_completer
@@ -134,7 +134,7 @@ class MainWindow(QMainWindow):
         self.setObjectName("main")  # 样式表（theme.py）只认它里面的控件，不影响浮窗
         self.setWindowTitle(f"海克斯大乱斗助手 v{__version__}")
         self.setWindowIcon(app_icon())
-        self.resize(860, 740)
+        self.resize(980, 780)
         self.setMinimumSize(360, 260)
 
         root = _page()
@@ -238,12 +238,20 @@ class MainWindow(QMainWindow):
         self._notify_timer.timeout.connect(self._notify_tick)
         self._notify_timer.start(3000)
 
-        # 英雄锚点区（全页共享：英雄评级/胜率、选人队友 ID、快速搜索与分段切换）
+        # 英雄锚点区（全页共享：高清英雄头像、评级/胜率、选人队友 ID、快速搜索与分段切换）
         hc = _card()
         hl = _card_layout(hc)
+        hero_top = QHBoxLayout()
+        hero_top.setSpacing(12)
+        self.hero_avatar = QLabel()
+        self.hero_avatar.setFixedSize(48, 48)
+        self.hero_avatar.setAlignment(Qt.AlignCenter)
+        self.hero_avatar.setPixmap(app_icon().pixmap(40, 40))
         self.hero_label = QLabel()
         self.hero_label.setTextFormat(Qt.RichText)
-        hl.addWidget(self.hero_label)
+        hero_top.addWidget(self.hero_avatar, 0, Qt.AlignVCenter)
+        hero_top.addWidget(self.hero_label, 1, Qt.AlignVCenter)
+        hl.addLayout(hero_top)
         self.cs_label = QLabel()  # 选人界面：待选栏按胜率排序的汇总
         self.cs_label.setTextFormat(Qt.RichText)
         self.cs_label.setWordWrap(True)
@@ -305,26 +313,12 @@ class MainWindow(QMainWindow):
         self.tab_hero.setWordWrap(True)
         self.tab_hero.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.tab_hero.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        # 未选英雄时的快捷英雄入口（热门/高胜率英雄一键预览出装与海克斯）
-        self.quick_heroes_box = QWidget()
-        qh_outer = QVBoxLayout(self.quick_heroes_box)
-        qh_outer.setContentsMargins(0, 8, 0, 0)
-        qh_outer.setSpacing(8)
-        self._quick_heroes_title = theme.mark(QLabel("快捷查看热门英雄出装（或按 Ctrl+K 搜索任意英雄）"), muted=True)
-        qh_outer.addWidget(self._quick_heroes_title)
-        self._quick_heroes_grid = QGridLayout()
-        self._quick_heroes_grid.setSpacing(8)
-        qh_outer.addLayout(self._quick_heroes_grid)
-        self._quick_heroes_loaded = False
-        w1 = _page()
-        l1 = QVBoxLayout(w1)
-        l1.setContentsMargins(16, 14, 16, 14)
-        l1.addWidget(self.tab_hero)
-        l1.addWidget(self.quick_heroes_box)
-        l1.addStretch(1)
-        # 出装、加点很长：放进滚动区，不然页面按最高的一页定高度，选了英雄后设置页的「检查更新」被挤出窗口
+        self.tab_hero.hide()  # 保留完整富文本属性兼容既有测试，实际展示交由组件化卡片 BuildsBoard
+        self.builds_board = cards.BuildsBoard(engine)
+        self.builds_board.hero_picked.connect(self.engine.set_hero)
+        # 出装与敌方规则卡片放进滚动区，窗口缩放时顺滑滚动且不影响设置页高度
         w1_scroll = QScrollArea()
-        w1_scroll.setWidget(w1)
+        w1_scroll.setWidget(self.builds_board)
         w1_scroll.setWidgetResizable(True)
         w1_scroll.setFrameShape(QFrame.NoFrame)
         w1_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
@@ -361,8 +355,15 @@ class MainWindow(QMainWindow):
         btns.addWidget(b2)
         btns.addStretch(1)
         l2.addLayout(btns)
+        self.augments_board = cards.AugmentsBoard()
+        l2.addWidget(self.augments_board)
         l2.addStretch(1)
-        self.tabs.addTab(w2, "海克斯选择")
+        w2_scroll = QScrollArea()
+        w2_scroll.setWidget(w2)
+        w2_scroll.setWidgetResizable(True)
+        w2_scroll.setFrameShape(QFrame.NoFrame)
+        w2_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
+        self.tabs.addTab(w2_scroll, "海克斯选择")
 
         self.tabs.addTab(self._settings_tab(), "设置")
         self._refresh_theme_visuals()
@@ -637,6 +638,8 @@ class MainWindow(QMainWindow):
                 self.set_theme.blockSignals(old)
         self._refresh_theme_visuals()
         self._panel_hero = None
+        if hasattr(self, "builds_board"):
+            self.builds_board.invalidate()
         if self.isVisible():
             self.refresh()
         if save:
@@ -1322,8 +1325,13 @@ class MainWindow(QMainWindow):
                 f"<span style='font-size:20px'><b>{escape(h['name'])}</b></span> "
                 f"<span style='color:{theme.MUTED}'>{escape(h['nick'])}</span><br>"
                 f"<span style='color:{theme.TEXT_2}'>{' · '.join(rating)}</span>")
+            if hasattr(self, "hero_avatar"):
+                pm = cards.hero_pixmap(self.engine.store, self.engine.icons, hid, size=48, radius=10)
+                self.hero_avatar.setPixmap(pm if not pm.isNull() else app_icon().pixmap(40, 40))
         else:
             self.hero_label.setText("<b>未识别到英雄，请手动选择</b>")
+            if hasattr(self, "hero_avatar"):
+                self.hero_avatar.setPixmap(app_icon().pixmap(40, 40))
         cs = snap.get("champ_select")
         if cs and (cs.get("bench") or cs.get("cards") or cs.get("teammates")):
             from .overlay import champ_select_summary
@@ -1363,14 +1371,13 @@ class MainWindow(QMainWindow):
         if d and self._panel_hero != key:
             self._panel_hero = key
             self.tab_hero.setText(self._hero_html(d, show_win))
-            if hasattr(self, "quick_heroes_box"):
-                self.quick_heroes_box.hide()
         elif not d:
             self._panel_hero = None
             self.tab_hero.setText(self._empty_hero_html())
-            self._ensure_quick_heroes()
-            if hasattr(self, "quick_heroes_box"):
-                self.quick_heroes_box.show()
+        if hasattr(self, "builds_board"):
+            self.builds_board.refresh_from(snap, d)
+        if hasattr(self, "augments_board"):
+            self.augments_board.set_data(h["name"] if h else "", (d or {}).get("augments") or [], show_win)
         self._render_offer(snap.get("evaluation"), show_win,
                            (snap.get("offer") or {}).get("pending_columns"))
 
