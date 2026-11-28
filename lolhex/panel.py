@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from . import recommend
+from . import item_rules, recommend
 
 MIN_SHARE = 0.1     # 旧的非核心出装栏目仍按现有规则过滤低出场组合。
 
@@ -30,7 +30,15 @@ def by_win(rows: list[dict], min_games: int = 0) -> list[dict]:
     return sorted(keep, key=lambda x: -x["win"])
 
 
-def hero_panel(store, hero_key, k: int = 300, *, allow_network: bool = True) -> dict | None:
+def hero_panel(
+    store,
+    hero_key,
+    k: int = 300,
+    *,
+    allow_network: bool = True,
+    enemies: dict | None = None,
+    enemy_rules: bool = True,
+) -> dict | None:
     hid = store.resolve_hero(hero_key)
     if not hid:
         return None
@@ -92,8 +100,24 @@ def hero_panel(store, hero_key, k: int = 300, *, allow_network: bool = True) -> 
     n_heroes = len(store.ranks.get("heroes") or {}) or None
     status = store.status()
     official = status.get("official") or {}
+    hero_obj = store.heroes.get(hid)
+    shop_stats = store.shop_item_stats(hid) if hasattr(store, "shop_item_stats") else None
+    rule_adjustments = (
+        item_rules.recommend_rule_items(
+            shop_stats,
+            enemies,
+            hero_roles=(hero_obj or {}).get("roles") or [],
+        )
+        if enemy_rules and enemies and shop_stats
+        else []
+    )
+    augment_item_hints: dict[str, dict] = {}
+    if hasattr(store, "augment_items"):
+        hint = store.augment_items(hid, recommend.WEAPON_OF_DESTINY)
+        if hint:
+            augment_item_hints[recommend.WEAPON_OF_DESTINY] = hint
     return {
-        "hero": store.heroes.get(hid),
+        "hero": hero_obj,
         "rank": {**rank, "total": n_heroes},
         "augments": augs, "builds": builds, "core_band": core_band, "skills": data.get("skills", []), "spells": data.get("spells", {}),
         "partners": [{**p, "hero": store.heroes.get(p["hero"], {"id": p["hero"]})}
@@ -105,4 +129,7 @@ def hero_panel(store, hero_key, k: int = 300, *, allow_network: bool = True) -> 
         "win_source": ag.get("label") or "暂无统计数据", "summoners": summoners,
         "summoner_source": sum_src if summoners else "", "summoner_source_date": str(getattr(getattr(store, "dataset", None), "snapshot_at", "") or "")[:10] or None,
         "item_stats": item_stats,
+        "shop_stats": shop_stats,
+        "rule_adjustments": rule_adjustments,
+        "augment_item_hints": augment_item_hints,
     }

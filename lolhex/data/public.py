@@ -797,6 +797,117 @@ class PublicStore(DataStore):
         rows, label = self._hero_rows("hero_items.json", hero_id)
         return [{"item": r["key"], "games": r["games"], "win": r["win"]} for r in rows], label
 
+    def _core_builds_from_table(self, table: dict | None, hero_id: str) -> list[dict] | None:
+        raw = table.get(str(hero_id)) if isinstance(table, dict) else None
+        if not isinstance(raw, list):
+            return None
+        rows = []
+        for x in raw:
+            if not isinstance(x, dict) or x.get("ordered") is not True:
+                continue
+            items = x.get("items")
+            if (not isinstance(items, list) or len(items) != 3
+                    or not all(isinstance(i, str) and i.isascii() and i.isdigit() and len(i) <= 6 for i in items)
+                    or len(set(items)) != 3):
+                continue
+            g, w, pick = x.get("games"), x.get("wins"), x.get("pick")
+            if not (type(g) is int and g > 0 and type(w) is int and 0 <= w <= g):
+                continue
+            row = {"items": list(items), "ordered": True, "games": g, "wins": w, "win": w / g}
+            if type(pick) in (int, float) and 0 <= pick <= 1:
+                row["pick"] = pick
+            rows.append(row)
+            if len(rows) == 3:
+                break
+        return rows or None
+
+    def shop_item_stats(self, hero_id: str) -> dict | None:
+        """商店框选与出装页所需的完整装备统计（纯数据计算，不依赖截图）。
+
+        口径：
+        - 前三件推荐顺序：来自 core_builds.json（前 5% 分段优先，否则全体）；
+        - 单件持有率（选取率）：hero_item_holdings[hero_id][item_id].games / equipment_heroes[hero_id].games；
+        - 装备属性标签与分类：来自 item_metadata.json（兜底 store.items）。
+        """
+        if not self.dataset:
+            return None
+        hid = str(hero_id)
+        band = self.equipment_band()
+        band_core = self.core_builds(hid)
+        core_rows = band_core or self._core_builds_from_table(
+            self.dataset.optional_table("core_builds.json"), hid
+        ) or []
+        core_order: dict[str, int] = {}
+        if core_rows:
+            for idx, iid in enumerate(core_rows[0]["items"], 1):
+                core_order[str(iid)] = idx
+
+        holdings_table = (
+            (self.dataset.band_table("hero_item_holdings.json", band) if band else None)
+            or self.dataset.optional_table("hero_item_holdings.json")
+        )
+        eq_heroes = (
+            (self.dataset.band_table("equipment_heroes.json", band) if band else None)
+            or self.dataset.optional_table("equipment_heroes.json")
+        )
+        item_meta = self.dataset.optional_table("item_metadata.json")
+
+        hero_hold = holdings_table.get(hid) if isinstance(holdings_table, dict) else None
+        hero_eq = eq_heroes.get(hid) if isinstance(eq_heroes, dict) else None
+        if not isinstance(hero_hold, dict) or not isinstance(hero_eq, dict):
+            return None
+        total_games = hero_eq.get("games")
+        if type(total_games) is not int or total_games <= 0:
+            return None
+        base_win = hero_eq.get("win_rate")
+        if type(base_win) not in (int, float) or isinstance(base_win, bool):
+            base_win = None
+
+        items_out: list[dict] = []
+        for iid, stats in hero_hold.items():
+            if not isinstance(stats, dict):
+                continue
+            g, w = stats.get("games"), stats.get("wins")
+            if not (type(g) is int and g > 0 and type(w) is int and 0 <= w <= g):
+                continue
+            sid = str(iid)
+            meta = item_meta.get(sid) if isinstance(item_meta, dict) else None
+            meta = meta if isinstance(meta, dict) else {}
+            static_it = self.items.get(sid) or {}
+            category = meta.get("category") or "other"
+            types = [str(t) for t in (meta.get("types") or []) if t]
+            if category != "complete_equipment" and "Boots" not in types and sid not in core_order:
+                continue
+            win = w / g
+            pick = min(1.0, g / total_games)
+            delta = round((win - base_win) * 100, 2) if base_win is not None else None
+            items_out.append({
+                "item_id": sid,
+                "name": static_it.get("name") or meta.get("name") or sid,
+                "icon": static_it.get("icon") or meta.get("icon"),
+                "category": category,
+                "types": types,
+                "price": meta.get("total"),
+                "order": core_order.get(sid),
+                "pick": round(pick, 4),
+                "win": round(win, 4),
+                "delta": delta,
+                "games": g,
+                "low_sample": bool(stats.get("low_sample")),
+                "source": "stats",
+            })
+
+        items_out.sort(key=lambda x: (x["order"] is None, x["order"] or 99, -x["pick"], -x["win"]))
+        return {
+            "hero_id": hid,
+            "band_label": self.equipment_label(bool(band_core)) or ALL_LABEL,
+            "total_games": total_games,
+            "base_win": round(base_win, 4) if base_win is not None else None,
+            "core_order": core_order,
+            "core_builds": core_rows,
+            "items": items_out,
+        }
+
     def equipment_band(self) -> str | None:
         """装备推荐实际可用的分段：选了前 5% 且数据有分段时为 "high"，其余（没选、中分、娱乐）为 None。"""
         band = self.effective_band()

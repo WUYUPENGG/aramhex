@@ -8,3 +8,5 @@ dist/
 lolhex/data/bundled.new/
 lolhex/_build.py
 lolhex/_official*
+.agents/
+skills-lock.json

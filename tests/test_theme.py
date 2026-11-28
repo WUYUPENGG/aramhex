@@ -21,6 +21,8 @@ def app():
     app.setPalette(palette)
     if zh := getattr(app, "_zh", None):
         app.removeTranslator(zh)
+        app._zh = None
+    theme._sync_globals("light")
 
 
 def test_every_rule_is_scoped_so_the_overlay_is_untouched():
@@ -75,3 +77,73 @@ def test_overlay_is_pixel_identical(app, tmp_path, monkeypatch):
     before = shots()
     theme.apply(app)
     assert shots() == before
+    theme.apply(app, "dark")
+    assert shots() == before
+
+
+@pytest.mark.parametrize("mode", ["light", "dark"])
+def test_dual_theme_stylesheet_is_scoped_and_distinct(app, mode):
+    css = theme.stylesheet(mode)
+    assert "%(" not in css
+    selectors = [s.strip() for block in re.findall(r"([^{}]+)\{[^{}]*\}", css) for s in block.split(",")]
+    assert len(selectors) > 40
+    for s in selectors:
+        assert s.startswith(("QMainWindow#main", "QDialog", "QMenu#tray", "QListView#heroPopup")), s
+    eff = theme.apply(app, mode)
+    assert eff == mode and theme.current_mode() == mode
+    assert app.palette().color(QPalette.Window) == QColor(theme.THEMES[mode]["BG"])
+    assert app.palette().color(QPalette.Highlight) == QColor(theme.ACCENT)
+    if mode == "dark":
+        # 深色模式下不能残留浅色硬编码底色
+        assert "#fff7df" not in css.lower()
+        assert "#f7f9fc" not in css.lower()
+        assert "#f2f4f8" not in css.lower()
+
+
+def test_mainwindow_live_theme_toggle_persists(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("ARAMHEX_HOME", str(tmp_path))
+    from lolhex.config import Settings
+    from lolhex.engine import Engine
+    from lolhex.ui import mainwindow, overlay
+
+    monkeypatch.setattr(mainwindow.QMessageBox, "information", staticmethod(lambda *a, **k: None))
+    s = Settings.load()
+    eng = Engine(s)
+    ov = overlay.Overlay(eng)
+    ov.timer.stop()
+    w = mainwindow.MainWindow(eng, ov)
+    try:
+        theme.apply(app, "light")
+        w._set_theme_mode("dark")
+        assert theme.current_mode() == "dark"
+        assert s.theme_mode == "dark"
+        assert Settings.load(tmp_path / "config.json").theme_mode == "dark"
+        assert w.set_theme.currentData() == "dark"
+        assert w.btn_theme.text() == "切浅色"
+
+        w.btn_theme.click()
+        assert theme.current_mode() == "light"
+        assert s.theme_mode == "light"
+        assert Settings.load(tmp_path / "config.json").theme_mode == "light"
+        assert w.set_theme.currentData() == "light"
+        assert w.btn_theme.text() == "切深色"
+
+        # 左侧导航栏按钮与页面栈同步
+        w._nav_buttons[2].click()
+        assert w.tabs.currentIndex() == 2
+        assert w._nav_buttons[2].property("active") is True
+        assert w._nav_buttons[0].property("active") is False
+
+        # Batch 2 新功能设置开关即时保存并生效
+        w.set_shop_overlay.setChecked(False)
+        w.set_enemy_rules.setChecked(False)
+        w.set_teammate_ocr.setChecked(False)
+        saved = Settings.load(tmp_path / "config.json")
+        assert (saved.shop_overlay, saved.enemy_rules, saved.teammate_ocr) == (False, False, False)
+    finally:
+        w.hide()
+        ov.set_visible(False)
+        for widget in (w, ov.panel, ov.badges, ov.champ):
+            widget.deleteLater()
+        eng.stop()
+        app.processEvents()

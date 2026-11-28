@@ -1,0 +1,2145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>海克斯大乱斗助手 · AramHex</title>
+<style>
+/* ==========================================================================
+   AramHex · Oil UI Edition ("海克斯精密仪")
+   Principles:
+   - Group with space & typography first; hairlines sparingly; zero card-in-card.
+   - Strict >= 12px typography and >= 4.5:1 contrast across both dark & light themes.
+   - Three intentional motions: first-load entrance (once), gliding active indicator,
+     and tactile click/result feedback. Zero decorative hover-spotlight or loops.
+   ========================================================================== */
+.ah-root {
+  /* Obsidian Dark (Default) — Calm high-contrast instrument */
+  --ah-bg: #0E1014;
+  --ah-rail: #14171E;
+  --ah-surface: #181C24;
+  --ah-surface-hover: #202633;
+  --ah-line: rgba(255, 255, 255, 0.09);
+  --ah-line-strong: rgba(255, 255, 255, 0.16);
+  --ah-ink: #F3F4F6;
+  --ah-ink-2: #C2C9D6;
+  --ah-muted: #939DAC;
+  --ah-accent: #4CA3FF;
+  --ah-accent-bg: rgba(76, 163, 255, 0.14);
+  --ah-accent-ink: #071324;
+  --ah-good: #4ADE80;
+  --ah-good-bg: rgba(74, 222, 128, 0.14);
+  --ah-warn: #FBBF24;
+  --ah-warn-bg: rgba(251, 191, 36, 0.12);
+  --ah-bad: #F87171;
+  --ah-bad-bg: rgba(248, 113, 113, 0.14);
+  --ah-prism: #D8B4FE;
+  --ah-prism-bg: rgba(192, 132, 252, 0.16);
+  --ah-gold: #FDE047;
+  --ah-gold-bg: rgba(250, 204, 21, 0.16);
+  --ah-shadow-pop: 0 24px 64px rgba(0, 0, 0, 0.58);
+  --ah-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ah-font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  --ah-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  font-family: var(--ah-font);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ah-ink);
+  background: var(--ah-bg);
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 228px minmax(0, 1fr);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Warm Porcelain Light Theme */
+.ah-root[data-theme="light"] {
+  --ah-bg: #F8F8F6;
+  --ah-rail: #EFEFED;
+  --ah-surface: #FFFFFF;
+  --ah-surface-hover: #F2F3F0;
+  --ah-line: rgba(20, 21, 24, 0.09);
+  --ah-line-strong: rgba(20, 21, 24, 0.18);
+  --ah-ink: #141518;
+  --ah-ink-2: #3F444E;
+  --ah-muted: #5A616E;
+  --ah-accent: #0060C7;
+  --ah-accent-bg: rgba(0, 96, 199, 0.10);
+  --ah-accent-ink: #FFFFFF;
+  --ah-good: #0E6830;
+  --ah-good-bg: rgba(14, 104, 48, 0.10);
+  --ah-warn: #8F4200;
+  --ah-warn-bg: rgba(217, 119, 6, 0.11);
+  --ah-bad: #C42525;
+  --ah-bad-bg: rgba(196, 37, 37, 0.10);
+  --ah-prism: #7E22CE;
+  --ah-prism-bg: rgba(126, 34, 206, 0.10);
+  --ah-gold: #8A5D00;
+  --ah-gold-bg: rgba(202, 138, 4, 0.14);
+  --ah-shadow-pop: 0 24px 60px rgba(20, 21, 24, 0.18);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { margin: 0; padding: 0; background: var(--ah-bg); overflow-x: hidden; }
+button, input, select { font-family: inherit; }
+
+/* First-load gentle entrance (plays once, never replays on tab switches) */
+@keyframes firstEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ah-root.first-load .enter-seq > * {
+  animation: firstEnter 0.34s var(--ah-ease) both;
+}
+.ah-root.first-load .enter-seq > *:nth-child(2) { animation-delay: 45ms; }
+.ah-root.first-load .enter-seq > *:nth-child(3) { animation-delay: 90ms; }
+.ah-root.first-load .enter-seq > *:nth-child(4) { animation-delay: 135ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==================== Left Navigation Rail ==================== */
+.rail {
+  background: var(--ah-rail);
+  border-right: 1px solid var(--ah-line);
+  padding: 20px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 6px;
+}
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--ah-accent);
+  color: var(--ah-accent-ink);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.brand-name { font-size: 14px; font-weight: 700; letter-spacing: -0.2px; }
+.brand-ver { font-size: 12px; color: var(--ah-muted); font-family: var(--ah-mono); }
+
+.search-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--ah-line-strong);
+  background: var(--ah-surface);
+  color: var(--ah-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.16s, color 0.16s, transform 0.08s;
+}
+.search-btn:hover { border-color: var(--ah-accent); color: var(--ah-ink); }
+.search-btn:active { transform: scale(0.98); }
+.search-btn .kbd { margin-left: auto; }
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-family: var(--ah-mono);
+  font-size: 12px;
+  color: var(--ah-muted);
+  background: var(--ah-bg);
+}
+
+/* Sliding Active Nav Indicator */
+.nav {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nav-pill {
+  position: absolute;
+  left: 0; right: 0;
+  height: 38px;
+  border-radius: 9px;
+  background: var(--ah-accent-bg);
+  transition: transform 0.24s var(--ah-ease);
+  pointer-events: none;
+  z-index: 0;
+}
+.nav-item {
+  position: relative;
+  z-index: 1;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 11px;
+  border: none;
+  background: transparent;
+  color: var(--ah-ink-2);
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 9px;
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.14s, transform 0.08s;
+}
+.nav-item svg { width: 17px; height: 17px; flex-shrink: 0; }
+.nav-item:hover { color: var(--ah-ink); }
+.nav-item:active { transform: scale(0.98); }
+.nav-item.active { color: var(--ah-accent); font-weight: 600; }
+
+.rail-foot {
+  margin-top: auto;
+  padding: 14px 6px 2px;
+  border-top: 1px solid var(--ah-line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.status-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  color: var(--ah-ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  padding: 2px 0;
+}
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ah-good); flex-shrink: 0;
+}
+.status-dot.client { background: var(--ah-accent); }
+.status-dot.idle { background: var(--ah-muted); }
+.rail-meta { font-size: 12px; color: var(--ah-muted); line-height: 1.55; }
+
+/* ==================== Main Workspace ==================== */
+.workspace {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Single-Line Top Bar */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 36px;
+  border-bottom: 1px solid var(--ah-line);
+  flex-wrap: wrap;
+}
+.topbar-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ah-ink);
+  letter-spacing: -0.2px;
+}
+.topbar-status {
+  font-size: 12px;
+  color: var(--ah-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.topbar-status.live { color: var(--ah-good); font-weight: 600; }
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Sliding Segmented Control */
+.seg {
+  position: relative;
+  display: inline-flex;
+  background: var(--ah-rail);
+  border-radius: 9px;
+  padding: 3px;
+  gap: 2px;
+}
+.seg-thumb {
+  position: absolute;
+  top: 3px; bottom: 3px;
+  border-radius: 7px;
+  background: var(--ah-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+  transition: transform 0.22s var(--ah-ease), width 0.22s var(--ah-ease);
+  pointer-events: none;
+}
+.seg button {
+  position: relative;
+  z-index: 1;
+  border: none;
+  background: transparent;
+  color: var(--ah-muted);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 11px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: color 0.16s;
+  white-space: nowrap;
+}
+.seg button:hover { color: var(--ah-ink); }
+.seg button.active { color: var(--ah-ink); font-weight: 600; }
+
+/* Action Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 13px;
+  border-radius: 8px;
+  border: 1px solid var(--ah-line-strong);
+  background: var(--ah-surface);
+  color: var(--ah-ink);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.14s, border-color 0.14s, transform 0.08s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--ah-surface-hover); border-color: var(--ah-accent); }
+.btn:active { transform: scale(0.97); }
+.btn.primary {
+  background: var(--ah-accent);
+  border-color: var(--ah-accent);
+  color: var(--ah-accent-ink);
+  font-weight: 600;
+}
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ah-ink-2);
+}
+.btn.ghost:hover { background: var(--ah-surface-hover); color: var(--ah-ink); }
+
+/* Content Canvas — Generous space, NO outer card boxes */
+.content {
+  width: 100%;
+  max-width: 1020px;
+  padding: 26px 36px 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+/* ==================== Hero Anchor Band (Frameless Protagonist) ==================== */
+.hero-band {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--ah-line);
+  flex-wrap: wrap;
+}
+.hero-id {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.hero-emblem {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 800;
+  color: #FFFFFF;
+  flex-shrink: 0;
+  letter-spacing: -0.5px;
+}
+.hero-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.hero-name {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.6px;
+}
+.hero-nick {
+  font-size: 14px;
+  color: var(--ah-muted);
+  font-weight: 500;
+}
+.hero-subline {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--ah-ink-2);
+}
+.skill-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.keycap {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-family: var(--ah-mono);
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--ah-rail);
+  color: var(--ah-ink);
+}
+.keycap.primary {
+  background: var(--ah-accent);
+  color: var(--ah-accent-ink);
+}
+
+.hero-metric {
+  display: flex;
+  align-items: flex-end;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+.winrate-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.winrate-big {
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -1.4px;
+  font-variant-numeric: tabular-nums;
+}
+.winrate-meter {
+  width: 128px;
+  height: 5px;
+  border-radius: 99px;
+  background: var(--ah-rail);
+  margin-top: 8px;
+  overflow: hidden;
+  position: relative;
+}
+.winrate-meter-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.45s var(--ah-ease);
+}
+.winrate-caption {
+  font-size: 12px;
+  color: var(--ah-muted);
+  margin-top: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-pair {
+  display: flex;
+  gap: 22px;
+  padding-left: 22px;
+  border-left: 1px solid var(--ah-line);
+}
+.stat-col strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+.stat-col span {
+  font-size: 12px;
+  color: var(--ah-muted);
+}
+
+/* ==================== Frameless Editorial Sections ==================== */
+.sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.sec-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ah-ink);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.sec-note {
+  font-size: 12px;
+  color: var(--ah-muted);
+}
+
+/* Clean Tonal Tags (NO borders) */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tag.accent { background: var(--ah-accent-bg); color: var(--ah-accent); }
+.tag.good { background: var(--ah-good-bg); color: var(--ah-good); }
+.tag.warn { background: var(--ah-warn-bg); color: var(--ah-warn); }
+.tag.bad { background: var(--ah-bad-bg); color: var(--ah-bad); }
+.tag.prism { background: var(--ah-prism-bg); color: var(--ah-prism); }
+.tag.gold { background: var(--ah-gold-bg); color: var(--ah-gold); }
+.tag.neutral { background: var(--ah-rail); color: var(--ah-ink-2); }
+
+/* Two-Column Editorial Split */
+.two-col {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 36px;
+  align-items: start;
+}
+
+/* Item Glyphs (Unified 1.5px stroke language) */
+.it-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  position: relative;
+  flex-shrink: 0;
+  color: #FFFFFF;
+}
+.it-icon svg { width: 18px; height: 18px; }
+.it-step {
+  position: absolute;
+  top: -6px; right: -6px;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--ah-ink);
+  color: var(--ah-bg);
+  font-size: 11px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
+.it-check {
+  position: absolute;
+  bottom: -5px; right: -5px;
+  width: 17px; height: 17px;
+  border-radius: 50%;
+  background: var(--ah-accent);
+  color: var(--ah-accent-ink);
+  font-size: 11px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
+
+/* Core Build Path List (Hairline-separated, ZERO box-in-box) */
+.path-list {
+  display: flex;
+  flex-direction: column;
+}
+.path-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--ah-line);
+}
+.path-row:first-child { border-top: 1px solid var(--ah-line); }
+.path-arrow { color: var(--ah-muted); font-size: 14px; }
+.path-names {
+  margin-left: 6px;
+  min-width: 0;
+  flex: 1;
+}
+.path-names strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ah-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.path-names span {
+  font-size: 12px;
+  color: var(--ah-muted);
+}
+.path-nums {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.path-nums strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ah-good);
+}
+.path-nums span { font-size: 12px; color: var(--ah-muted); }
+
+/* Enemy Composition Strip (Module C — Left-accented Callout, ZERO nested borders) */
+.enemy-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.enemy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border-radius: 9px;
+  border: none;
+  background: var(--ah-rail);
+  color: var(--ah-ink);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.14s, transform 0.08s;
+}
+.enemy-chip:hover { background: var(--ah-surface-hover); }
+.enemy-chip:active { transform: scale(0.97); }
+.enemy-role { font-size: 12px; color: var(--ah-muted); }
+
+.threat-bar {
+  height: 6px;
+  border-radius: 99px;
+  overflow: hidden;
+  display: flex;
+  background: var(--ah-rail);
+  margin: 12px 0 8px;
+}
+.tb-ap { background: #A855F7; transition: width 0.35s var(--ah-ease); }
+.tb-ad { background: #F97316; transition: width 0.35s var(--ah-ease); }
+.tb-tank { background: #10B981; transition: width 0.35s var(--ah-ease); }
+.tb-sup { background: #3B82F6; transition: width 0.35s var(--ah-ease); }
+
+.rule-callout {
+  margin-top: 14px;
+  padding: 13px 16px;
+  border-radius: 0 10px 10px 0;
+  border-left: 3px solid var(--ah-warn);
+  background: var(--ah-warn-bg);
+}
+.rule-reason {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ah-warn);
+  line-height: 1.5;
+}
+.rule-items-inline {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.rule-item-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  background: transparent;
+  color: var(--ah-ink);
+  cursor: pointer;
+  padding: 2px 0;
+  text-align: left;
+}
+.rule-item-btn strong { display: block; font-size: 13.5px; }
+.rule-item-btn span { font-size: 12px; color: var(--ah-ink-2); }
+
+/* Single-Item Holdings Tabular List (Linear / Apple Finance style) */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.data-table th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ah-muted);
+  padding: 0 8px 10px;
+  border-bottom: 1px solid var(--ah-line);
+}
+.data-table th.num, .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.data-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--ah-line);
+  font-size: 13.5px;
+  vertical-align: middle;
+}
+.data-table tbody tr {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.data-table tbody tr:hover { background: var(--ah-surface-hover); }
+.data-table tbody tr.is-owned { opacity: 0.56; }
+.pick-bar {
+  display: inline-block;
+  width: 72px;
+  height: 5px;
+  border-radius: 99px;
+  background: var(--ah-rail);
+  vertical-align: middle;
+  margin-right: 8px;
+  overflow: hidden;
+}
+.pick-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--ah-accent);
+}
+
+/* ==================== Augment Choice Cards (Clean Single-Level Surfaces) ==================== */
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.choice-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.choice-card {
+  background: var(--ah-surface);
+  border: 1px solid var(--ah-line);
+  border-radius: 14px;
+  padding: 18px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: transform 0.18s var(--ah-ease), border-color 0.18s;
+}
+.choice-card:hover { transform: translateY(-2px); border-color: var(--ah-line-strong); }
+.choice-card.best {
+  border-color: var(--ah-good);
+  box-shadow: inset 0 3px 0 var(--ah-good);
+}
+.choice-score {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.9px;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Diverging Delta Track */
+.delta-track {
+  position: relative;
+  display: inline-block;
+  width: 110px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--ah-rail);
+  vertical-align: middle;
+}
+.delta-mid { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1.5px; background: var(--ah-muted); }
+.delta-fill { position: absolute; top: 0; bottom: 0; border-radius: 99px; }
+
+/* ==================== 16:9 In-Game Overlay Simulator ==================== */
+.canvas-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  overflow: hidden;
+  background: radial-gradient(ellipse 80% 65% at 50% 45%, #162338 0%, #0B111C 68%, #070A10 100%);
+  color: #F3F4F6;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
+  user-select: none;
+}
+.canvas-label {
+  position: absolute;
+  top: 14px; left: 16px;
+  font-size: 12px;
+  color: #C5D0E0;
+  background: rgba(9, 13, 21, 0.78);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.shop-frame {
+  position: absolute;
+  left: 5%; top: 13%; width: 64%; height: 73%;
+  background: rgba(11, 16, 26, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(212, 184, 126, 0.36);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.shop-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #E6D0A1;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  flex: 1;
+}
+.shop-slot {
+  position: relative;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.055);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 6px;
+  cursor: pointer;
+  transition: background 0.14s, transform 0.12s var(--ah-ease), box-shadow 0.16s;
+}
+.shop-slot:hover { background: rgba(255, 255, 255, 0.11); transform: translateY(-1px); }
+.shop-slot.owned { opacity: 0.45; }
+.shop-slot.next { box-shadow: inset 0 0 0 2px #4ADE80; background: rgba(74, 222, 128, 0.12); }
+.shop-slot.stat { box-shadow: inset 0 0 0 1.5px rgba(76, 163, 255, 0.65); }
+.shop-slot.rule { box-shadow: inset 0 0 0 2px #FBBF24; background: rgba(251, 191, 36, 0.13); }
+.slot-badge {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.slot-name { font-size: 12px; color: #E2E8F0; text-align: center; }
+.slot-stat { font-size: 12px; color: #CBD5E1; font-variant-numeric: tabular-nums; }
+
+.shop-bar-tip {
+  position: absolute;
+  left: 5%; bottom: 12px; width: 64%;
+  padding: 8px 14px;
+  border-radius: 9px;
+  background: rgba(11, 16, 26, 0.92);
+  font-size: 12.5px;
+  color: #F3F4F6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.hud-box {
+  position: absolute;
+  top: 14px; right: 16px;
+  width: 244px;
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: #F3F4F6;
+  font-size: 12.5px;
+  line-height: 1.55;
+  transform-origin: top right;
+  transition: transform 0.18s var(--ah-ease);
+}
+
+.controls-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--ah-ink-2);
+}
+.controls-bar label { display: inline-flex; align-items: center; gap: 8px; }
+
+/* ==================== Settings Grouped Rows (Single Clean Container) ==================== */
+.theme-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.theme-opt {
+  border-radius: 12px;
+  padding: 12px;
+  border: 2px solid var(--ah-line);
+  background: var(--ah-surface);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.16s, transform 0.08s;
+}
+.theme-opt:hover { border-color: var(--ah-line-strong); }
+.theme-opt.active { border-color: var(--ah-accent); }
+.theme-preview {
+  height: 56px;
+  border-radius: 8px;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 30% 70%;
+  margin-bottom: 10px;
+  border: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+.setting-list {
+  display: flex;
+  flex-direction: column;
+}
+.setting-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--ah-line);
+}
+.setting-item:first-child { border-top: 1px solid var(--ah-line); }
+.setting-item strong { display: block; font-size: 14px; font-weight: 600; }
+.setting-item span { display: block; font-size: 12.5px; color: var(--ah-muted); margin-top: 2px; }
+
+.switch { position: relative; width: 44px; height: 26px; flex-shrink: 0; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch-track {
+  position: absolute; inset: 0;
+  background: var(--ah-line-strong);
+  border-radius: 999px; cursor: pointer;
+  transition: background 0.18s;
+}
+.switch-track::before {
+  content: "";
+  position: absolute; width: 20px; height: 20px; left: 3px; top: 3px;
+  background: #FFFFFF; border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  transition: transform 0.18s var(--ah-ease);
+}
+.switch input:checked + .switch-track { background: var(--ah-good); }
+.switch input:checked + .switch-track::before { transform: translateX(18px); }
+
+/* ==================== ⌘K Spotlight Palette & Contract Drawer ==================== */
+.backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.54);
+  display: none;
+  z-index: 100;
+}
+.backdrop.open { display: flex; }
+.backdrop.center { align-items: flex-start; justify-content: center; padding-top: 10vh; }
+.backdrop.right { justify-content: flex-end; }
+
+.palette {
+  width: min(540px, 92vw);
+  border-radius: 14px;
+  background: var(--ah-surface);
+  border: 1px solid var(--ah-line-strong);
+  box-shadow: var(--ah-shadow-pop);
+  overflow: hidden;
+  animation: firstEnter 0.18s var(--ah-ease);
+}
+.palette-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px; border-bottom: 1px solid var(--ah-line);
+}
+.palette-input {
+  flex: 1; border: none; outline: none; background: transparent;
+  color: var(--ah-ink); font-size: 16px;
+}
+.palette-input::placeholder {
+  color: var(--ah-muted);
+  opacity: 1;
+}
+.palette-list { max-height: 360px; overflow-y: auto; padding: 6px; }
+.palette-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: 9px; cursor: pointer;
+}
+.palette-row.sel, .palette-row:hover { background: var(--ah-accent-bg); }
+.palette-foot {
+  padding: 9px 16px; border-top: 1px solid var(--ah-line);
+  font-size: 12px; color: var(--ah-muted);
+  display: flex; justify-content: space-between;
+}
+
+.drawer {
+  width: min(540px, 92vw);
+  height: 100%;
+  background: var(--ah-surface);
+  border-left: 1px solid var(--ah-line-strong);
+  padding: 20px 22px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.json-pre {
+  flex: 1; overflow: auto;
+  background: var(--ah-bg);
+  border-radius: 10px;
+  padding: 14px;
+  font-family: var(--ah-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ah-ink);
+  white-space: pre-wrap;
+}
+
+/* Result Toast */
+.toast {
+  position: fixed;
+  bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(14px);
+  background: var(--ah-ink);
+  color: var(--ah-bg);
+  padding: 9px 18px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.22s var(--ah-ease);
+  z-index: 140;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+@media (max-width: 920px) {
+  .ah-root { grid-template-columns: 1fr; }
+  .rail { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--ah-line); }
+  .topbar, .content { padding-left: 18px; padding-right: 18px; }
+  .two-col, .choice-grid, .choice-grid.four, .theme-picker { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="ah-root first-load" id="root" data-theme="dark">
+  <!-- Left Navigation Rail -->
+  <aside class="rail">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <polygon points="12 2 21 7 21 17 12 22 3 17 3 7 12 2"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name">海克斯大乱斗助手</div>
+        <div class="brand-ver">v1.3.0 · 16.23</div>
+      </div>
+    </div>
+
+    <button class="search-btn" id="btn-cmd" aria-label="搜索英雄">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <span>搜索英雄…</span>
+      <span class="kbd">⌘K</span>
+    </button>
+
+    <nav class="nav" id="nav" aria-label="主导航">
+      <div class="nav-pill" id="nav-pill"></div>
+      <button class="nav-item active" data-tab="builds">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        <span>英雄与出装</span>
+      </button>
+      <button class="nav-item" data-tab="augments">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polygon points="12 2 15 9 22 9 16.5 14 18.5 21 12 17 5.5 21 7.5 14 2 9 9 9 12 2"/></svg>
+        <span>海克斯决策</span>
+      </button>
+      <button class="nav-item" data-tab="champselect">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>选人与队友</span>
+      </button>
+      <button class="nav-item" data-tab="overlay">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <span>浮窗模拟</span>
+      </button>
+      <button class="nav-item" data-tab="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>设置</span>
+      </button>
+    </nav>
+
+    <div class="rail-foot">
+      <button class="status-btn" id="btn-phase" title="点击切换模拟对局状态">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-label">对局中 · 扫描中</span>
+      </button>
+      <div class="rail-meta">
+        仅截屏识别 · 不连 LCU<br>
+        统计样本 840 万局 · 16.23
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right Main Workspace -->
+  <div class="workspace">
+    <header class="topbar">
+      <span class="topbar-title" id="topbar-title">英雄与出装</span>
+      <span class="topbar-status" id="engine-status">离线演示 · 16.23 统计</span>
+      <div class="topbar-right">
+        <div class="seg" id="seg-band" role="tablist" aria-label="参考分段">
+          <div class="seg-thumb"></div>
+          <button data-val="">全体</button>
+          <button data-val="high" class="active">前 5%</button>
+          <button data-val="mid">中分</button>
+          <button data-val="casual">娱乐</button>
+        </div>
+        <button class="btn ghost" id="btn-theme" title="切换深色/浅色">浅色</button>
+        <button class="btn" id="btn-json">契约 JSON</button>
+      </div>
+    </header>
+
+    <main class="content enter-seq" id="content"></main>
+  </div>
+
+  <!-- ⌘K Hero Command Palette -->
+  <div class="backdrop center" id="cmd-backdrop">
+    <div class="palette" role="dialog" aria-label="搜索英雄">
+      <div class="palette-head">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--ah-accent)" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input class="palette-input" id="cmd-input" placeholder="输入英雄名、称号或拼音缩写（如 ys、jks、al）" autocomplete="off" />
+        <button class="btn ghost" id="btn-cmd-close">关闭</button>
+      </div>
+      <div class="palette-list" id="cmd-list"></div>
+      <div class="palette-foot">
+        <span id="cmd-hint">启动 scripts/preview_server.py 可检索全 173 英雄</span>
+        <span>↑ ↓ 选择 · Enter 确认</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Contract JSON Drawer -->
+  <div class="backdrop right" id="json-backdrop">
+    <div class="drawer" role="dialog" aria-label="前后端契约 JSON">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <strong style="font-size:15px;">前后端实时契约 JSON</strong>
+        <button class="btn" id="btn-json-close">关闭</button>
+      </div>
+      <div class="seg" id="seg-json">
+        <div class="seg-thumb"></div>
+        <button data-val="snapshot" class="active">snapshot()</button>
+        <button data-val="shop">shop_recommendations()</button>
+        <button data-val="settings">Settings</button>
+      </div>
+      <pre class="json-pre" id="json-pre"></pre>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</div>
+
+<script>
+// ============================================================================
+// Unified Icon Language (1.75px crisp stroke) & Authentic 16.23 Data
+// ============================================================================
+const HERO_COLORS = { "103": "#2563EB", "157": "#0E7490", "222": "#BE185D", "1": "#B91C1C" };
+function heroColor(id, roles) {
+  if (HERO_COLORS[id]) return HERO_COLORS[id];
+  const r = (roles || [])[0];
+  return { mage: "#4F46E5", fighter: "#0E7490", marksman: "#BE185D", assassin: "#991B1B", tank: "#047857", support: "#1D4ED8" }[r] || "#334155";
+}
+
+function itemGlyph(types) {
+  const t = new Set(types || []);
+  if (t.has("Boots")) return { bg: "#1D4ED8", svg: '<path d="M5 18h14M7 6v7l-2 3h11l-2-4V6z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>' };
+  if (t.has("SpellBlock") || t.has("MagicResist")) return { bg: "#0E7490", svg: '<path d="M12 3l7 3.5V12c0 4.5-3.2 7.8-7 9-3.8-1.2-7-4.5-7-9V6.5L12 3z" fill="none" stroke="currentColor" stroke-width="1.75"/>' };
+  if (t.has("Armor")) return { bg: "#92400E", svg: '<path d="M12 3l7 3v6c0 4.5-3.2 7.5-7 9-3.8-1.5-7-4.5-7-9V6l7-3z" fill="none" stroke="currentColor" stroke-width="1.75"/><path d="M12 8v8" stroke="currentColor" stroke-width="1.75"/>' };
+  if (t.has("MagicPenetration") || t.has("ArmorPenetration")) return { bg: "#6D28D9", svg: '<path d="M5 19L19 5M13 5h6v6" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>' };
+  if (t.has("CriticalStrike") || t.has("AttackSpeed")) return { bg: "#9D174D", svg: '<path d="M14.5 4.5L19.5 9.5 9 20H4v-5L14.5 4.5z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>' };
+  if (t.has("Damage")) return { bg: "#991B1B", svg: '<path d="M18 4l2 2-11 11-4 1 1-4L18 4z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>' };
+  if (t.has("SpellDamage")) return { bg: "#4338CA", svg: '<path d="M12 3l2.6 5.8L20.5 11l-5.9 2.2L12 19l-2.6-5.8L3.5 11l5.9-2.2L12 3z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>' };
+  return { bg: "#334155", svg: '<circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="1.75"/>' };
+}
+
+const OFFLINE_HEROES = {
+  "103": {
+    hero: { id: "103", name: "阿狸", nick: "九尾妖狐", roles: ["mage", "assassin"], keywords: "ahri,al,hl,阿狸,九尾,狐狸" },
+    brief: { hero_id: "103", name: "阿狸", nick: "九尾妖狐", win: 0.522, rank: 34, total: 173, grade: "A" },
+    skills: [{ max: ["Q", "W", "E"] }],
+    summoners: [{ spells: [{ name: "闪现" }, { name: "雪球" }], win: 0.531, pick: 0.64 }],
+    shop: {
+      hero_id: "103", total_games: 491731, base_win: 0.522,
+      core_builds: [
+        { items: ["2503", "4645", "3089"], ordered: true, pick: 0.0371, win: 0.5389, games: 81341 },
+        { items: ["2503", "6653", "4645"], ordered: true, pick: 0.0203, win: 0.5363, games: 44482 },
+        { items: ["6655", "4645", "3089"], ordered: true, pick: 0.1934, win: 0.5232, games: 424392 }
+      ],
+      items: [
+        { item_id: "2503", name: "黯炎火炬", category: "complete_equipment", types: ["SpellDamage","Mana"], order: 1, pick: 0.1835, win: 0.5344, delta: 1.24, games: 90219, low_sample: false },
+        { item_id: "4645", name: "影焰", category: "complete_equipment", types: ["SpellDamage","MagicPenetration"], order: 2, pick: 0.8181, win: 0.5157, delta: -0.63, games: 402271, low_sample: false },
+        { item_id: "3089", name: "灭世者的死亡之帽", category: "complete_equipment", types: ["SpellDamage"], order: 3, pick: 0.6346, win: 0.5277, delta: 0.57, games: 312070, low_sample: false },
+        { item_id: "6655", name: "卢登的回声", category: "complete_equipment", types: ["SpellDamage","Mana"], order: null, pick: 0.5573, win: 0.5199, delta: -0.21, games: 274051, low_sample: false },
+        { item_id: "3020", name: "法师之靴", category: "other", types: ["Boots","MagicPenetration"], order: null, pick: 0.436, win: 0.515, delta: -0.7, games: 214394, low_sample: false },
+        { item_id: "4646", name: "风暴狂涌", category: "complete_equipment", types: ["SpellDamage","MagicPenetration"], order: null, pick: 0.4164, win: 0.5174, delta: -0.46, games: 204748, low_sample: false },
+        { item_id: "3135", name: "虚空之杖", category: "complete_equipment", types: ["MagicPenetration","SpellDamage"], order: null, pick: 0.3163, win: 0.5075, delta: -1.45, games: 155539, low_sample: false },
+        { item_id: "3157", name: "中娅沙漏", category: "complete_equipment", types: ["Armor","SpellDamage"], order: null, pick: 0.2149, win: 0.5027, delta: -1.93, games: 105661, low_sample: false },
+        { item_id: "6653", name: "兰德里的折磨", category: "complete_equipment", types: ["Health","SpellDamage"], order: null, pick: 0.152, win: 0.5291, delta: 0.71, games: 74743, low_sample: false },
+        { item_id: "3102", name: "女妖面纱", category: "complete_equipment", types: ["SpellBlock","SpellDamage"], order: null, pick: 0.0575, win: 0.5162, delta: -0.58, games: 28253, low_sample: false }
+      ]
+    },
+    augments: [
+      { id: "1156", name: "沃格勒特的巫师帽", rarity: "prismatic", tier: "S", delta: 4.38, win: 0.566, games: 28707 },
+      { id: "1388", name: "无限循环往复", rarity: "prismatic", tier: "S", delta: 4.16, win: 0.564, games: 31327 },
+      { id: "1004", name: "回归基本功", rarity: "prismatic", tier: "S", delta: 3.83, win: 0.562, games: 5757 },
+      { id: "1030", name: "尤里卡", rarity: "prismatic", tier: "S", delta: 3.45, win: 0.557, games: 69862 },
+      { id: "3051", name: "蓝色屏障", rarity: "silver", tier: "A", delta: 3.18, win: 0.555, games: 12209 },
+      { id: "1201", name: "歌利亚巨人", rarity: "prismatic", tier: "C", delta: -2.40, win: 0.498, games: 4120 }
+    ],
+    augment_item_hints: { "3081": { items: [{ item: "3089", name: "灭世者的死亡之帽", win: 0.578, games: 1074 }] } }
+  },
+  "157": {
+    hero: { id: "157", name: "亚索", nick: "疾风剑豪", roles: ["fighter", "assassin"], keywords: "yasuo,ys,jh,快乐风男,亚索" },
+    brief: { hero_id: "157", name: "亚索", nick: "疾风剑豪", win: 0.586, rank: 1, total: 173, grade: "S" },
+    skills: [{ max: ["Q", "E", "W"] }],
+    summoners: [{ spells: [{ name: "闪现" }, { name: "雪球" }], win: 0.592, pick: 0.78 }],
+    shop: {
+      hero_id: "157", total_games: 745000, base_win: 0.586,
+      core_builds: [
+        { items: ["123430", "3032", "6333"], ordered: true, pick: 0.112, win: 0.626, games: 83400 },
+        { items: ["3032", "3031", "6333"], ordered: true, pick: 0.094, win: 0.614, games: 69900 }
+      ],
+      items: [
+        { item_id: "123430", name: "毁坏仪式", category: "complete_equipment", types: ["Damage","CriticalStrike"], order: 1, pick: 0.680, win: 0.626, delta: 4.0, games: 506600, low_sample: false },
+        { item_id: "3032", name: "育恩塔尔荒野箭", category: "complete_equipment", types: ["Damage","AttackSpeed","CriticalStrike"], order: 2, pick: 0.447, win: 0.600, delta: 1.4, games: 333015, low_sample: false },
+        { item_id: "6333", name: "死亡之舞", category: "complete_equipment", types: ["Damage","Armor"], order: 3, pick: 0.522, win: 0.610, delta: 2.4, games: 388890, low_sample: false },
+        { item_id: "3031", name: "无尽之刃", category: "complete_equipment", types: ["Damage","CriticalStrike"], order: null, pick: 0.555, win: 0.573, delta: -1.3, games: 413475, low_sample: false },
+        { item_id: "3153", name: "破败王者之刃", category: "complete_equipment", types: ["Damage","AttackSpeed"], order: null, pick: 0.555, win: 0.562, delta: -2.4, games: 413475, low_sample: false },
+        { item_id: "3006", name: "狂战士胫甲", category: "other", types: ["Boots","AttackSpeed"], order: null, pick: 0.453, win: 0.588, delta: 0.2, games: 337485, low_sample: false },
+        { item_id: "3065", name: "振奋盔甲", category: "complete_equipment", types: ["Health","SpellBlock"], order: null, pick: 0.089, win: 0.604, delta: 1.8, games: 66305, low_sample: false },
+        { item_id: "3036", name: "多米尼克领主的致意", category: "complete_equipment", types: ["Damage","ArmorPenetration"], order: null, pick: 0.194, win: 0.593, delta: 0.7, games: 144530, low_sample: false }
+      ]
+    },
+    augments: [
+      { id: "3101", name: "弹跳蜜蜂", rarity: "prismatic", tier: "S", delta: 12.86, win: 0.715, games: 47366 },
+      { id: "3102", name: "鼓声暴起 低音轰鸣", rarity: "gold", tier: "S", delta: 8.04, win: 0.666, games: 206618 },
+      { id: "3103", name: "秘术冲拳", rarity: "prismatic", tier: "S", delta: 7.16, win: 0.658, games: 175062 },
+      { id: "3104", name: "魔法转物理", rarity: "silver", tier: "A", delta: 4.35, win: 0.630, games: 54254 },
+      { id: "3106", name: "慢炖", rarity: "gold", tier: "C", delta: -3.10, win: 0.555, games: 5210 }
+    ],
+    augment_item_hints: { "3081": { items: [{ item: "123430", name: "毁坏仪式", win: 0.642, games: 2450 }] } }
+  },
+  "222": {
+    hero: { id: "222", name: "金克丝", nick: "暴走萝莉", roles: ["marksman"], keywords: "jinx,jks,ll,金克丝,萝莉" },
+    brief: { hero_id: "222", name: "金克丝", nick: "暴走萝莉", win: 0.475, rank: 131, total: 173, grade: "C" },
+    skills: [{ max: ["Q", "W", "E"] }],
+    summoners: [{ spells: [{ name: "闪现" }, { name: "疾跑" }], win: 0.489, pick: 0.52 }],
+    shop: {
+      hero_id: "222", total_games: 602000, base_win: 0.475,
+      core_builds: [{ items: ["3032", "3085", "3031"], ordered: true, pick: 0.145, win: 0.489, games: 87290 }],
+      items: [
+        { item_id: "3032", name: "育恩塔尔荒野箭", category: "complete_equipment", types: ["Damage","AttackSpeed","CriticalStrike"], order: 1, pick: 0.376, win: 0.481, delta: 0.6, games: 226352, low_sample: false },
+        { item_id: "3085", name: "卢安娜的飓风", category: "complete_equipment", types: ["AttackSpeed","CriticalStrike"], order: 2, pick: 0.602, win: 0.489, delta: 1.4, games: 362404, low_sample: false },
+        { item_id: "3031", name: "无尽之刃", category: "complete_equipment", types: ["Damage","CriticalStrike"], order: 3, pick: 0.754, win: 0.485, delta: 1.0, games: 453908, low_sample: false },
+        { item_id: "6676", name: "收集者", category: "complete_equipment", types: ["Damage","CriticalStrike"], order: null, pick: 0.635, win: 0.473, delta: -0.2, games: 382270, low_sample: false },
+        { item_id: "3036", name: "多米尼克领主的致意", category: "complete_equipment", types: ["Damage","ArmorPenetration"], order: null, pick: 0.460, win: 0.486, delta: 1.1, games: 276920, low_sample: false },
+        { item_id: "3156", name: "玛莫提乌斯之噬", category: "complete_equipment", types: ["Damage","SpellBlock"], order: null, pick: 0.042, win: 0.492, delta: 1.7, games: 25284, low_sample: false },
+        { item_id: "3026", name: "守护天使", category: "complete_equipment", types: ["Damage","Armor"], order: null, pick: 0.031, win: 0.488, delta: 1.3, games: 18662, low_sample: false }
+      ]
+    },
+    augments: [
+      { id: "4101", name: "男爵之手", rarity: "prismatic", tier: "S", delta: 6.78, win: 0.553, games: 2170 },
+      { id: "4102", name: "海牛阿福的勇士", rarity: "prismatic", tier: "S", delta: 5.91, win: 0.536, games: 14134 },
+      { id: "3081", name: "命运之武器", rarity: "gold", tier: "S", delta: 4.73, win: 0.523, games: 84299 },
+      { id: "4105", name: "反伤甲壳", rarity: "gold", tier: "C", delta: -2.85, win: 0.447, games: 3120 }
+    ],
+    augment_item_hints: { "3081": { items: [{ item: "3031", name: "无尽之刃", win: 0.538, games: 11820 }] } }
+  },
+  "1": {
+    hero: { id: "1", name: "安妮", nick: "黑暗之女", roles: ["mage", "support"], keywords: "annie,an,hn,安妮,火女" },
+    brief: { hero_id: "1", name: "安妮", nick: "黑暗之女", win: 0.499, rank: 71, total: 173, grade: "B" },
+    skills: [{ max: ["Q", "W", "E"] }],
+    summoners: [{ spells: [{ name: "闪现" }, { name: "雪球" }], win: 0.511, pick: 0.58 }],
+    shop: {
+      hero_id: "1", total_games: 201548, base_win: 0.499,
+      core_builds: [{ items: ["3118", "4645", "3089"], ordered: true, pick: 0.0701, win: 0.5141, games: 54876 }, { items: ["3118", "6653", "3116"], ordered: true, pick: 0.0865, win: 0.5114, games: 67747 }],
+      items: [
+        { item_id: "3118", name: "残疫", category: "complete_equipment", types: ["SpellDamage","Mana"], order: 1, pick: 0.7293, win: 0.5037, delta: 0.47, games: 146999, low_sample: false },
+        { item_id: "4645", name: "影焰", category: "complete_equipment", types: ["SpellDamage","MagicPenetration"], order: 2, pick: 0.6251, win: 0.4984, delta: -0.06, games: 125990, low_sample: false },
+        { item_id: "3089", name: "灭世者的死亡之帽", category: "complete_equipment", types: ["SpellDamage"], order: 3, pick: 0.4783, win: 0.5139, delta: 1.49, games: 96401, low_sample: false },
+        { item_id: "6653", name: "兰德里的折磨", category: "complete_equipment", types: ["Health","SpellDamage"], order: null, pick: 0.376, win: 0.5159, delta: 1.69, games: 75777, low_sample: false },
+        { item_id: "3135", name: "虚空之杖", category: "complete_equipment", types: ["MagicPenetration","SpellDamage"], order: null, pick: 0.2084, win: 0.4921, delta: -0.69, games: 42004, low_sample: false },
+        { item_id: "3157", name: "中娅沙漏", category: "complete_equipment", types: ["Armor","SpellDamage"], order: null, pick: 0.142, win: 0.495, delta: -0.4, games: 28600, low_sample: false },
+        { item_id: "3102", name: "女妖面纱", category: "complete_equipment", types: ["SpellBlock","SpellDamage"], order: null, pick: 0.0155, win: 0.5193, delta: 2.03, games: 3120, low_sample: false }
+      ]
+    },
+    augments: [
+      { id: "1388", name: "无限循环往复", rarity: "prismatic", tier: "S", delta: 4.34, win: 0.543, games: 12655 },
+      { id: "1028", name: "侵蚀", rarity: "silver", tier: "S", delta: 3.96, win: 0.541, games: 4445 },
+      { id: "3039", name: "拯救", rarity: "gold", tier: "S", delta: 3.92, win: 0.543, games: 2492 },
+      { id: "1053", name: "科学狂人", rarity: "prismatic", tier: "A", delta: 3.64, win: 0.537, games: 6604 }
+    ],
+    augment_item_hints: { "3081": { items: [{ item: "4645", name: "影焰", win: 0.515, games: 2314 }] } }
+  }
+};
+
+const ENEMY_ROSTER = [
+  { hero_id: "99", name: "拉克丝", roles: ["mage", "support"] },
+  { hero_id: "63", name: "布兰德", roles: ["mage"] },
+  { hero_id: "134", name: "辛德拉", roles: ["mage"] },
+  { hero_id: "516", name: "奥恩", roles: ["tank"] },
+  { hero_id: "51", name: "凯特琳", roles: ["marksman"] },
+  { hero_id: "238", name: "劫", roles: ["assassin"] },
+  { hero_id: "157", name: "亚索", roles: ["fighter", "assassin"] },
+  { hero_id: "222", name: "金克丝", roles: ["marksman"] },
+  { hero_id: "81", name: "伊泽瑞尔", roles: ["marksman"] },
+  { hero_id: "31", name: "科加斯", roles: ["tank", "mage"] },
+  { hero_id: "36", name: "蒙多医生", roles: ["fighter", "tank"] },
+  { hero_id: "37", name: "娑娜", roles: ["support", "mage"] }
+];
+const ENEMY_BY_ID = Object.fromEntries(ENEMY_ROSTER.map(e => [e.hero_id, e]));
+const ENEMY_PRESETS = {
+  ap:   { label: "高法伤 3AP", ids: ["99", "63", "134", "516", "51"] },
+  ad:   { label: "菜刀队 4AD", ids: ["238", "157", "222", "81", "516"] },
+  tank: { label: "多坦克", ids: ["516", "31", "36", "51", "37"] },
+  none: { label: "清空", ids: [] }
+};
+const TEAMMATES = [
+  { raw_name: "暗影岛茶话会#5120", confidence: 0.96, frames: 5, uncertain: false, rating: null },
+  { raw_name: "大乱斗只玩软辅#8842", confidence: 0.93, frames: 4, uncertain: false, rating: null },
+  { raw_name: "Il1O0易错名#2049", confidence: 0.74, frames: 2, uncertain: true, rating: null },
+  { raw_name: "泉水指挥官", confidence: 0.89, frames: 4, uncertain: false, rating: null }
+];
+const BENCH = [
+  { hero_id: "157", name: "亚索", grade: "S", win: 0.586, best: true },
+  { hero_id: "37", name: "娑娜", grade: "S", win: 0.568, best: false },
+  { hero_id: "40", name: "迦娜", grade: "A", win: 0.551, best: false },
+  { hero_id: "222", name: "金克丝", grade: "C", win: 0.475, best: false }
+];
+
+const ROLE_CN = { mage: "法师", marksman: "射手", assassin: "刺客", fighter: "战士", tank: "坦克", support: "辅助" };
+const TAB_TITLES = { builds: "英雄与出装", augments: "海克斯决策", champselect: "选人与队友", overlay: "浮窗模拟", settings: "设置" };
+const BAND_LABELS = { "": "全体", high: "前 5%", mid: "中分", casual: "娱乐" };
+const RARITY_CN = { prismatic: "棱彩", gold: "黄金", silver: "白银" };
+const PHASES = [
+  { phase: "ingame", label: "对局中 · 扫描中", dot: "" },
+  { phase: "client", label: "客户端 · 选英雄", dot: "client" },
+  { phase: null, label: "待机 · 未进游戏", dot: "idle" }
+];
+
+const state = {
+  live: false, liveBundle: null,
+  tab: "builds", themeMode: "dark", phaseIdx: 0,
+  heroId: "103", band: "high",
+  enemyIds: ["99", "63", "134", "516", "51"],
+  ownedItems: new Set(), hoveredShopItem: null,
+  augSub: "offer", augFilter: "all", offerMode: "standard",
+  overlayScene: "shop", badgePos: "top",
+  settings: { theme_mode: "dark", shop_overlay: true, enemy_rules: true, teammate_ocr: true, check_data_updates: true, autostart: false, overlay_opacity: 88, overlay_scale: 1.0 },
+  jsonTab: "snapshot",
+  cmdOpen: false, cmdSel: 0, cmdItems: [], cmdPurpose: "hero", cmdSlot: 0
+};
+
+const SHORT_ITEM_NAMES = {
+  "灭世者的死亡之帽": "死亡之帽",
+  "育恩塔尔荒野箭": "育恩塔尔",
+  "多米尼克领主的致意": "多米尼克",
+  "兰德里的折磨": "兰德里",
+  "破败王者之刃": "破败之刃",
+  "玛莫提乌斯之噬": "饮魔刀",
+  "卢安娜的飓风": "飓风",
+  "瑞莱的冰晶节杖": "冰杖"
+};
+function shortItemName(name) {
+  return SHORT_ITEM_NAMES[name] || (name.length > 6 ? name.slice(0, 5) : name);
+}
+
+function pct(x) { return x == null ? "—" : (x * 100).toFixed(1) + "%"; }
+
+async function tryConnectLive() {
+  if (location.protocol === "file:") return;
+  const wantLive = location.port === "8765" || new URLSearchParams(location.search).has("live");
+  if (!wantLive) return;
+  try {
+    const r = await fetch("/api/health");
+    if (!r.ok) return;
+    const h = await r.json();
+    if (!h.ok) return;
+    state.live = true;
+    const el = document.getElementById("engine-status");
+    el.classList.add("live");
+    el.textContent = `已连接实时引擎 · ${h.heroes} 位英雄 (${h.patch})`;
+    await syncLive();
+  } catch (_) {}
+}
+
+async function syncLive() {
+  if (!state.live) return;
+  const owned = Array.from(state.ownedItems).join(",");
+  const r = await fetch(`/api/state?hero=${encodeURIComponent(state.heroId)}&owned=${encodeURIComponent(owned)}`);
+  if (r.ok) {
+    state.liveBundle = await r.json();
+    state.band = state.liveBundle.band || "";
+    render();
+  }
+}
+
+async function postLive(path, payload) {
+  if (!state.live) { render(); return; }
+  const r = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...payload, hero_id: state.heroId, owned: Array.from(state.ownedItems) })
+  });
+  if (r.ok) { state.liveBundle = await r.json(); render(); }
+}
+
+function computeOfflineEnemies() {
+  if (!state.enemyIds.length) return null;
+  const heroes = state.enemyIds.map(id => ENEMY_BY_ID[id]).filter(Boolean);
+  let ap = 0, ad = 0, tank = 0, sup = 0; const apN = [], adN = [], tankN = [];
+  heroes.forEach(h => {
+    const rs = new Set(h.roles);
+    if (rs.has("mage")) { ap++; apN.push(h.name); }
+    if (rs.has("marksman") || rs.has("assassin") || (rs.has("fighter") && !rs.has("mage"))) { ad++; adN.push(h.name); }
+    if (rs.has("tank")) { tank++; tankN.push(h.name); }
+    if (rs.has("support")) sup++;
+  });
+  const tot = Math.max(1, ap + ad + tank + sup);
+  const tags = [];
+  if (ap >= 3) tags.push("高法伤"); if (ad >= 3) tags.push("高物理爆发"); if (tank >= 2) tags.push("高坦度");
+  return { source: "loading_ocr", heroes, profile: { ap_count: ap, ad_count: ad, tank_count: tank, support_count: sup, ap_heroes: apN, ad_heroes: adN, tank_heroes: tankN, ratios: { ap: +(ap/tot).toFixed(3), ad: +(ad/tot).toFixed(3), tank: +(tank/tot).toFixed(3), support: +(sup/tot).toFixed(3) }, tags } };
+}
+
+function getBundle() {
+  if (state.live && state.liveBundle) return state.liveBundle;
+  const base = OFFLINE_HEROES[state.heroId] || OFFLINE_HEROES["103"];
+  const enemies = computeOfflineEnemies();
+  const owned = state.ownedItems;
+  const rules = [];
+  if (state.settings.enemy_rules && enemies) {
+    const p = enemies.profile;
+    const bias = (base.hero.roles || []).includes("mage") ? "ap" : "ad";
+    const checks = [];
+    if (p.ap_count >= 3) checks.push(["enemy_ap_heavy", ["SpellBlock","MagicResist"], `敌方法师 ${p.ap_count} 人（${p.ap_heroes.join("、")}），常出装中建议优先考虑魔抗`]);
+    if (p.ad_count >= 3) checks.push(["enemy_ad_heavy", ["Armor"], `敌方物理输出 ${p.ad_count} 人（${p.ad_heroes.join("、")}），常出装中建议优先护甲保命`]);
+    if (p.tank_count >= 2) checks.push(["enemy_tank_heavy", bias==="ap"?["MagicPenetration"]:["ArmorPenetration"], `敌方坦克 ${p.tank_count} 人（${p.tank_heroes.join("、")}），建议提前补穿透`]);
+    const seen = new Set();
+    checks.forEach(([rid, types, reason]) => {
+      base.shop.items
+        .filter(it => !it.low_sample && it.pick >= 0.015 && it.category === "complete_equipment" && !owned.has(it.item_id) && !seen.has(it.item_id) && it.types.some(t => types.includes(t)))
+        .sort((a, b) => b.win - a.win).slice(0, 2)
+        .forEach(it => {
+          if (rules.length < 3) {
+            seen.add(it.item_id);
+            rules.push({ item_id: it.item_id, name: it.name, source: "rule", disclaimer: "规则推荐 · 非统计结论", rule_id: rid, rule_reason: reason, matched_types: it.types.filter(t => types.includes(t)), base_pick: it.pick, base_win: it.win, base_games: it.games, low_sample: false });
+          }
+        });
+    });
+  }
+  const rMap = Object.fromEntries(rules.map(r => [r.item_id, r]));
+  let nextId = null;
+  const items = base.shop.items.map(it => {
+    const isOwned = owned.has(it.item_id); const rh = rMap[it.item_id];
+    if (!nextId && !isOwned && it.order != null) nextId = it.item_id;
+    return { ...it, owned: isOwned, source: rh ? "rule" : "stats", rule_reason: rh ? rh.rule_reason : null, disclaimer: rh ? rh.disclaimer : null };
+  });
+  if (!nextId) nextId = (items.find(x => !x.owned && !x.low_sample) || items[0])?.item_id;
+  const augs = base.augments;
+  const mkSlot = (a, idx, verdict, extra={}) => ({ index: idx, augment_id: a.id, name: a.name, rarity: a.rarity, tier: a.tier, score: a.delta, win: a.win, games: a.games, rank: idx+1, rank_total: 42, verdict, ...extra });
+  const offers = {
+    standard: { advice: `首选「${augs[0].name}」`, slots: [mkSlot(augs[0],0,"best"), mkSlot(augs[1],1,"ok"), mkSlot(augs[augs.length-1],2,"reroll")] },
+    four: { advice: `首选「${augs[0].name}」；「冷门奇招」样本过少建议刷新`, slots: [mkSlot(augs[0],0,"best"), mkSlot(augs[2],1,"ok"), { index: 2, augment_id: "1999", name: "冷门奇招", rarity: "prismatic", tier: "B", score: 5.1, win: 0.573, games: 185, rank: 1, rank_total: 42, verdict: "reroll", thin: "too_few", sample_warning: true }, mkSlot(augs[augs.length-1],3,"reroll")] },
+    destiny: { advice: `首选「命运之武器」`, slots: [mkSlot({ id: "3081", name: "命运之武器", rarity: "gold", tier: "S", delta: 3.1, win: 0.553, games: 19400 }, 0, "best", { item_hint: base.augment_item_hints["3081"] }), mkSlot(augs[1],1,"ok"), mkSlot(augs[augs.length-1],2,"reroll")] }
+  };
+  return { ...base, band: state.band, enemies, shop: { ...base.shop, band_label: BAND_LABELS[state.band], items, rule_adjustments: rules, owned_items: Array.from(owned), next_recommended_id: nextId }, offers, settings: { ...state.settings, badge_position: state.badgePos }, snapshot: { phase: PHASES[state.phaseIdx].phase, hero_id: base.hero.id, hero: base.hero, enemies, picked_augments: state.offerMode === "destiny" ? ["3081"] : [], settings: { ...state.settings, badge_position: state.badgePos }, champ_select: PHASES[state.phaseIdx].phase === "client" ? { mine: base.hero.id, bench: BENCH, teammates: state.settings.teammate_ocr ? TEAMMATES : [], teammates_status: "cached" } : null } };
+}
+
+function applyTheme() {
+  const root = document.getElementById("root");
+  let eff = state.themeMode;
+  if (eff === "system") {
+    const hostLight = document.documentElement.classList.contains("light") || window.matchMedia("(prefers-color-scheme: light)").matches;
+    eff = hostLight ? "light" : "dark";
+  }
+  root.setAttribute("data-theme", eff);
+  document.getElementById("btn-theme").textContent = eff === "dark" ? "切浅色" : "切深色";
+  state.settings.theme_mode = state.themeMode;
+}
+document.addEventListener("themechange", () => { if (state.themeMode === "system") applyTheme(); });
+
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(window.__tt);
+  window.__tt = setTimeout(() => el.classList.remove("show"), 2000);
+}
+
+function copyText(text, label) {
+  if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+  showToast(`已复制：${label || text}`);
+}
+
+function positionSegmentedThumbs() {
+  document.querySelectorAll(".seg").forEach(seg => {
+    const thumb = seg.querySelector(".seg-thumb");
+    const active = seg.querySelector("button.active");
+    if (thumb && active) {
+      thumb.style.width = `${active.offsetWidth}px`;
+      thumb.style.transform = `translateX(${active.offsetLeft - 3}px)`;
+    }
+  });
+  const navActive = document.querySelector("#nav .nav-item.active");
+  const pill = document.getElementById("nav-pill");
+  if (navActive && pill) pill.style.transform = `translateY(${navActive.offsetTop}px)`;
+}
+
+// ============================================================================
+// Views
+// ============================================================================
+function renderBuilds(b) {
+  const h = b.hero, br = b.brief, sh = b.shop;
+  const winPct = (br.win || 0.5) * 100;
+  const winColor = winPct >= 52 ? "var(--ah-good)" : winPct >= 49.5 ? "var(--ah-accent)" : "var(--ah-bad)";
+  const sk = (b.skills && b.skills[0] && b.skills[0].max) || ["Q", "W", "E"];
+  const sum = b.summoners && b.summoners[0] ? b.summoners[0].spells.map(s => s.name).join(" + ") : "闪现 + 雪球";
+  const itemsById = Object.fromEntries((sh.items || []).map(x => [x.item_id, x]));
+  const rules = sh.rule_adjustments || [];
+  const ruleIds = new Set(rules.map(r => r.item_id));
+  const enemies = b.enemies;
+  const ratios = (enemies && enemies.profile && enemies.profile.ratios) || { ap: 0, ad: 0, tank: 0, support: 0 };
+  const dh = b.augment_item_hints && b.augment_item_hints["3081"] && b.augment_item_hints["3081"].items && b.augment_item_hints["3081"].items[0];
+
+  return `
+    <!-- Hero Anchor Band (Protagonist) -->
+    <section class="hero-band">
+      <div class="hero-id">
+        <div class="hero-emblem" style="background:${heroColor(h.id, h.roles)}">${h.name.slice(0,2)}</div>
+        <div>
+          <div class="hero-title-row">
+            <h1 class="hero-name">${h.name}</h1>
+            <span class="hero-nick">${h.nick}</span>
+            <span class="tag ${br.grade==='S'?'gold':br.grade==='A'?'good':'accent'}">${br.grade || '—'} 级</span>
+            <button class="btn ghost" id="btn-hero-pick" style="padding:3px 9px;">更换英雄</button>
+          </div>
+          <div class="hero-subline">
+            <span class="skill-inline">加点
+              ${sk.slice(0,3).map((k,i)=>`<span class="keycap ${i===0?'primary':''}">${k}</span>${i<2?'<span>›</span>':''}`).join("")}
+            </span>
+            <span>召唤师技能：${sum}</span>
+            <span>${(h.roles||[]).map(r => ROLE_CN[r] || r).join(" / ")}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-metric">
+        <div class="winrate-block">
+          <div class="winrate-big" style="color:${winColor}">${winPct.toFixed(1)}%</div>
+          <div class="winrate-meter"><div class="winrate-meter-fill" style="width:${Math.min(100, Math.max(12, (winPct - 40) * 4.2))}%;background:${winColor};"></div></div>
+          <div class="winrate-caption">${BAND_LABELS[state.band]} · 基准胜率</div>
+        </div>
+        <div class="stat-pair">
+          <div class="stat-col"><strong>#${br.rank || '—'}</strong><span>排名 / ${br.total || 173}</span></div>
+          <div class="stat-col"><strong>${((sh.total_games || 0)/10000).toFixed(1)}万</strong><span>统计局数</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Core 3-Item Path + Enemy Comp Rule Adjustments -->
+    <div class="two-col">
+      <section>
+        <div class="sec-head">
+          <h2 class="sec-title">核心三件顺序 <span class="tag accent">对局统计</span></h2>
+          <span class="sec-note">商店框选第 1–3 件顺位依据</span>
+        </div>
+        <div class="path-list">
+          ${(sh.core_builds || []).slice(0,3).map((c, idx) => `
+            <div class="path-row">
+              ${c.items.map((iid, j) => {
+                const it = itemsById[iid] || { name: iid, types: [] };
+                const g = itemGlyph(it.types);
+                return `${j>0?'<span class="path-arrow">→</span>':''}
+                  <div class="it-icon" style="background:${g.bg}" title="${it.name}">
+                    <svg viewBox="0 0 24 24">${g.svg}</svg>
+                    ${idx===0 ? `<span class="it-step">${j+1}</span>` : ''}
+                    ${state.ownedItems.has(iid) ? `<span class="it-check">✓</span>` : ''}
+                  </div>`;
+              }).join("")}
+              <div class="path-names">
+                <strong>${c.items.map(iid => (itemsById[iid]||{}).name || iid).join(" · ")}</strong>
+                <span>选取率 ${pct(c.pick)} · ${(c.games/10000).toFixed(1)} 万局</span>
+              </div>
+              <div class="path-nums">
+                <strong>${pct(c.win)}</strong>
+                <span>胜率</span>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+        ${dh ? `
+          <div style="margin-top:14px;font-size:13px;color:var(--ah-ink-2);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span class="tag gold">命运之武器</span>
+            <span>首件推荐 <strong>${dh.name}</strong>（胜率 ${pct(dh.win)}，${dh.games.toLocaleString()} 局）</span>
+          </div>
+        ` : ''}
+      </section>
+
+      <section>
+        <div class="sec-head">
+          <h2 class="sec-title">敌方阵容与规则提示 <span class="tag warn">规则推荐 · 非统计结论</span></h2>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;" id="enemy-presets">
+          ${Object.entries(ENEMY_PRESETS).map(([k,v]) => `<button class="btn" style="padding:4px 10px;font-size:12px;" data-preset-enemy="${k}">${v.label}</button>`).join("")}
+        </div>
+        <div class="enemy-strip">
+          ${[0,1,2,3,4].map(idx => {
+            const eh = enemies && enemies.heroes[idx];
+            return eh
+              ? `<button class="enemy-chip" data-enemy-slot="${idx}" title="点击替换敌方英雄"><strong>${eh.name}</strong><span class="enemy-role">${ROLE_CN[(eh.roles||[])[0]]||''}</span></button>`
+              : `<button class="enemy-chip" data-enemy-slot="${idx}" style="color:var(--ah-muted);">+ 敌方 ${idx+1}</button>`;
+          }).join("")}
+        </div>
+        ${enemies ? `
+          <div class="threat-bar" aria-label="敌方定位分布">
+            <div class="tb-ap" style="width:${ratios.ap*100}%"></div>
+            <div class="tb-ad" style="width:${ratios.ad*100}%"></div>
+            <div class="tb-tank" style="width:${ratios.tank*100}%"></div>
+            <div class="tb-sup" style="width:${ratios.support*100}%"></div>
+          </div>
+          <div style="font-size:12px;color:var(--ah-muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+            <span>法伤 ${enemies.profile.ap_count} · 物理 ${enemies.profile.ad_count} · 坦克 ${enemies.profile.tank_count} · 辅助 ${enemies.profile.support_count}</span>
+            <span>${(enemies.profile.tags||[]).join(" / ") || "阵容均衡"}</span>
+          </div>
+          ${rules.length ? `
+            <div class="rule-callout">
+              <div class="rule-reason">${rules[0].rule_reason}</div>
+              <div class="rule-items-inline">
+                ${rules.map(r => {
+                  const g = itemGlyph(r.matched_types);
+                  return `<button class="rule-item-btn" data-toggle-owned="${r.item_id}">
+                    <div class="it-icon" style="background:${g.bg};width:32px;height:32px;"><svg viewBox="0 0 24 24">${g.svg}</svg></div>
+                    <div><strong>${r.name}</strong><span>常出胜率 ${pct(r.base_win)} · 持有 ${pct(r.base_pick)}</span></div>
+                  </button>`;
+                }).join("")}
+              </div>
+            </div>
+          ` : `<p style="margin-top:12px;font-size:13px;color:var(--ah-muted);">${state.settings.enemy_rules ? '当前敌方阵容均衡或常出装中无匹配抗性装，按左侧统计路线出装即可。' : '已在设置中关闭敌方阵容规则提示。'}</p>`}
+        ` : `<p style="margin-top:10px;font-size:13px;color:var(--ah-muted);">选择敌方 5 人后将按定位规则提示抗性或穿透装备。</p>`}
+      </section>
+    </div>
+
+    <!-- Single-Item Holdings Table (Module B Data Source) -->
+    <section>
+      <div class="sec-head">
+        <h2 class="sec-title">常出成装持有率 <span class="tag neutral">点击标记已购入</span></h2>
+        <span class="sec-note">${state.ownedItems.size ? `已购 ${state.ownedItems.size} 件 · 浮窗推荐顺位已自动推进` : '前 3 件带核心顺位编号，其余按持有率排序'}</span>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>装备</th>
+            <th>来源标注</th>
+            <th class="num">持有率（选取）</th>
+            <th class="num">胜率</th>
+            <th class="num">对局数</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(sh.items || []).slice(0, 9).map(it => {
+            const g = itemGlyph(it.types);
+            const isOwned = state.ownedItems.has(it.item_id);
+            const isRule = ruleIds.has(it.item_id);
+            return `
+              <tr data-toggle-owned="${it.item_id}" class="${isOwned?'is-owned':''}">
+                <td>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <div class="it-icon" style="background:${g.bg};width:32px;height:32px;">
+                      <svg viewBox="0 0 24 24">${g.svg}</svg>
+                      ${it.order ? `<span class="it-step">${it.order}</span>` : ''}
+                      ${isOwned ? `<span class="it-check">✓</span>` : ''}
+                    </div>
+                    <strong>${it.name}</strong>
+                  </div>
+                </td>
+                <td>
+                  ${isOwned ? `<span class="tag accent">已购入</span>`
+                    : isRule ? `<span class="tag warn">规则推荐 · 非统计</span>`
+                    : it.order ? `<span class="tag good">核心第 ${it.order} 件</span>`
+                    : it.low_sample ? `<span class="tag warn">小样本</span>`
+                    : `<span class="tag neutral">统计数据</span>`}
+                </td>
+                <td class="num"><span class="pick-bar"><i style="width:${Math.min(100, it.pick*100)}%"></i></span>${pct(it.pick)}</td>
+                <td class="num" style="font-weight:700;color:${it.win >= (sh.base_win||0.5)?'var(--ah-good)':'var(--ah-ink)'}">${pct(it.win)}</td>
+                <td class="num" style="color:var(--ah-muted)">${(it.games||0).toLocaleString()}</td>
+              </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    </section>
+  `;
+}
+
+function renderAugments(b) {
+  const offer = b.offers[state.offerMode];
+  const augs = (b.augments || []).filter(a => state.augFilter === "all" || a.rarity === state.augFilter);
+  const vm = { best: { txt: "首选", cls: "good", color: "var(--ah-good)" }, ok: { txt: "可选", cls: "accent", color: "var(--ah-accent)" }, reroll: { txt: "可考虑刷新", cls: "bad", color: "var(--ah-bad)" } };
+  return `
+    <div class="sec-head" style="margin-bottom:-12px;">
+      <div class="seg" id="seg-aug-sub">
+        <div class="seg-thumb"></div>
+        <button data-val="offer" class="${state.augSub==='offer'?'active':''}">三/四选一决策</button>
+        <button data-val="table" class="${state.augSub==='table'?'active':''}">全表 Δ 胜率排行</button>
+      </div>
+      ${state.augSub === "offer" ? `
+        <div class="seg" id="seg-offer-mode">
+          <div class="seg-thumb"></div>
+          <button data-val="standard" class="${state.offerMode==='standard'?'active':''}">三选一</button>
+          <button data-val="four" class="${state.offerMode==='four'?'active':''}">四选一</button>
+          <button data-val="destiny" class="${state.offerMode==='destiny'?'active':''}">命运之武器</button>
+        </div>
+      ` : `
+        <div class="seg" id="seg-aug-filter">
+          <div class="seg-thumb"></div>
+          <button data-val="all" class="${state.augFilter==='all'?'active':''}">全部</button>
+          <button data-val="prismatic" class="${state.augFilter==='prismatic'?'active':''}">棱彩</button>
+          <button data-val="gold" class="${state.augFilter==='gold'?'active':''}">黄金</button>
+          <button data-val="silver" class="${state.augFilter==='silver'?'active':''}">白银</button>
+        </div>
+      `}
+    </div>
+
+    ${state.augSub === "offer" ? `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid var(--ah-line);">
+        <div>
+          <h1 style="font-size:20px;font-weight:700;">${offer.advice}</h1>
+          <div style="font-size:13px;color:var(--ah-muted);margin-top:3px;">当前英雄：${b.hero.name} · 贝叶斯平滑 k=300 · 样本 ≥1000 局方可作为首选</div>
+        </div>
+        <button class="btn" onclick="showToast('已触发重新识别')">重新识别</button>
+      </div>
+      <div class="choice-grid ${offer.slots.length===4?'four':''}">
+        ${offer.slots.map(r => {
+          const v = vm[r.verdict] || vm.ok;
+          return `
+            <article class="choice-card ${r.verdict==='best'?'best':''}">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                <span class="tag ${v.cls}">${r.thin==='too_few'?'样本太少 · 建议刷新':v.txt}</span>
+                <span class="tag ${r.rarity==='prismatic'?'prism':r.rarity==='gold'?'gold':'neutral'}">${RARITY_CN[r.rarity]||''} ${r.tier?r.tier+'级':''}</span>
+              </div>
+              <h2 style="font-size:17px;font-weight:700;line-height:1.3;">${r.name}</h2>
+              <div class="choice-score" style="color:${v.color}">${r.score!=null?(r.score>0?'+':'')+r.score.toFixed(1):'—'}<span style="font-size:13px;font-weight:500;color:var(--ah-muted);"> pp</span></div>
+              <div style="font-size:13px;color:var(--ah-ink-2);line-height:1.6;">
+                胜率 <strong>${pct(r.win)}</strong> · ${(r.games||0).toLocaleString()} 局<br>
+                同稀有度排名 ${r.rank||'?'}/${r.rank_total||'?'}
+              </div>
+              ${r.sample_warning ? `<div style="font-size:12px;color:var(--ah-warn);font-weight:600;">样本不足 1000 局，仅供参考</div>` : ''}
+              ${r.item_hint && r.item_hint.items && r.item_hint.items[0] ? `<div style="padding-top:10px;border-top:1px solid var(--ah-line);font-size:13px;color:var(--ah-ink-2);">首件传说：<strong style="color:var(--ah-ink)">${r.item_hint.items[0].name}</strong>（${pct(r.item_hint.items[0].win)}）</div>` : ''}
+            </article>`;
+        }).join("")}
+      </div>
+    ` : `
+      <table class="data-table">
+        <thead>
+          <tr><th>海克斯名称</th><th>稀有度</th><th>相对基准 Δ 胜率</th><th class="num">Δ</th><th class="num">胜率</th><th class="num">局数</th></tr>
+        </thead>
+        <tbody>
+          ${augs.slice(0, 16).map(a => {
+            const d = a.delta || 0, w = Math.min(50, Math.abs(d) * 5.2), left = d >= 0 ? 50 : 50 - w;
+            const col = d >= 0 ? "var(--ah-good)" : "var(--ah-bad)";
+            return `<tr>
+              <td><strong>${a.name}</strong></td>
+              <td><span class="tag ${a.rarity==='prismatic'?'prism':a.rarity==='gold'?'gold':'neutral'}">${RARITY_CN[a.rarity]||''}</span></td>
+              <td><span class="delta-track"><span class="delta-mid"></span><span class="delta-fill" style="left:${left}%;width:${w}%;background:${col};"></span></span></td>
+              <td class="num" style="font-weight:700;color:${col}">${d>0?'+':''}${d.toFixed(1)}pp</td>
+              <td class="num">${pct(a.win)}</td>
+              <td class="num" style="color:var(--ah-muted)">${(a.games||0).toLocaleString()}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    `}
+  `;
+}
+
+function renderChampSelect(b) {
+  const myWin = b.brief.win || 0.5;
+  return `
+    <section>
+      <div class="sec-head">
+        <h2 class="sec-title">待选栏胜率对比 <span class="tag accent">当前 ${b.hero.name} ${pct(myWin)}</span></h2>
+        <span class="sec-note">高于当前英雄标绿，最高推荐加标</span>
+      </div>
+      <table class="data-table">
+        <thead><tr><th>待选英雄</th><th>评级</th><th class="num">胜率</th><th class="num">相对当前差值</th></tr></thead>
+        <tbody>
+          ${BENCH.map(c => {
+            const diff = (c.win - myWin) * 100;
+            return `<tr>
+              <td><strong>${c.name}</strong> ${c.best?'<span class="tag gold" style="margin-left:6px;">推荐换取</span>':''}</td>
+              <td><span class="tag ${c.grade==='S'?'gold':'neutral'}">${c.grade}</span></td>
+              <td class="num" style="font-weight:700;">${pct(c.win)}</td>
+              <td class="num" style="font-weight:700;color:${diff>0?'var(--ah-good)':'var(--ah-muted)'}">${diff>0?'+':''}${diff.toFixed(1)}pp</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <div class="sec-head">
+        <h2 class="sec-title">队友召唤师 ID（聊天框识别） <span class="tag good">仅截屏 · 不连 LCU</span></h2>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" onclick="showToast('已重新扫描选人聊天框')">重扫聊天框</button>
+          <button class="btn primary" id="btn-copy-all">复制全部 ID</button>
+        </div>
+      </div>
+      <table class="data-table">
+        <thead><tr><th>召唤师 ID</th><th>识别可信度</th><th>战绩评级（E2 预留）</th><th class="num">操作</th></tr></thead>
+        <tbody>
+          ${TEAMMATES.map(t => `
+            <tr>
+              <td style="font-family:var(--ah-mono);font-weight:600;">${t.raw_name}</td>
+              <td>${t.uncertain ? `<span class="tag warn">置信度 ${Math.round(t.confidence*100)}% · 建议核对</span>` : `<span style="color:var(--ah-muted)">${t.frames} 帧一致 · ${Math.round(t.confidence*100)}%</span>`}</td>
+              <td style="color:var(--ah-muted);">未接入（可复制至掌盟 / WeGame 自查）</td>
+              <td class="num"><button class="btn" style="padding:4px 10px;" data-copy="${t.raw_name}">复制</button></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </section>
+  `;
+}
+
+function renderOverlay(b) {
+  const sh = b.shop, allItems = sh.items || [], rules = sh.rule_adjustments || [];
+  const ruleMap = Object.fromEntries(rules.map(r => [r.item_id, r]));
+  // 确保商店 8 格里始终展示当前命中的规则推荐装，让琥珀框可见可点
+  const items = allItems.slice(0, 8);
+  rules.forEach(r => {
+    if (!items.some(x => x.item_id === r.item_id)) {
+      const found = allItems.find(x => x.item_id === r.item_id);
+      if (found) items[items.length - 1] = found;
+    }
+  });
+  const nextId = sh.next_recommended_id;
+  const tipItem = items.find(x => x.item_id === state.hoveredShopItem) || items.find(x => x.item_id === nextId) || items[0];
+  const offer = b.offers.standard;
+  const bgAlpha = state.settings.overlay_opacity / 100;
+
+  let inner = "";
+  if (state.overlayScene === "shop") {
+    inner = `
+      <div class="shop-frame">
+        <div class="shop-head">
+          <strong>装备商店 · ShopLayer（点击任意装备模拟购买）</strong>
+          <span>已购 ${state.ownedItems.size} 件 · 金币 3,450</span>
+        </div>
+        <div class="shop-grid">
+          ${items.map(it => {
+            const g = itemGlyph(it.types);
+            const isOwned = state.ownedItems.has(it.item_id);
+            const isNext = it.item_id === nextId && state.settings.shop_overlay;
+            const isRule = !!ruleMap[it.item_id] && state.settings.shop_overlay && !isOwned;
+            const isStat = !isOwned && state.settings.shop_overlay && (it.order != null || it.pick >= 0.3);
+            const cls = isOwned ? "owned" : isNext ? "next" : isRule ? "rule" : isStat ? "stat" : "";
+            const label = isOwned ? "已购" : isNext ? `下一件${it.order?' #'+it.order:''}` : isRule ? "规则推荐" : it.order ? `第 ${it.order} 件` : "";
+            const labelColor = isOwned ? "#60A5FA" : isNext ? "#4ADE80" : isRule ? "#FBBF24" : "#93C5FD";
+            return `
+              <div class="shop-slot ${cls}" data-shop-buy="${it.item_id}" data-shop-hover="${it.item_id}">
+                <div class="it-icon" style="background:${g.bg};width:32px;height:32px;"><svg viewBox="0 0 24 24">${g.svg}</svg></div>
+                <div class="slot-name">${shortItemName(it.name)}</div>
+                ${label ? `<div class="slot-badge" style="color:${labelColor}">${label}</div>` : `<div class="slot-stat">选 ${Math.round(it.pick*100)}%</div>`}
+              </div>`;
+          }).join("")}
+        </div>
+      </div>
+      ${tipItem ? `
+        <div class="shop-bar-tip">
+          <span><strong>${tipItem.name}</strong> · 持有 ${pct(tipItem.pick)} · 胜率 ${pct(tipItem.win)} · ${(tipItem.games||0).toLocaleString()} 局</span>
+          <span style="color:${ruleMap[tipItem.item_id]?'#FBBF24':'#4ADE80'};font-weight:600;">${ruleMap[tipItem.item_id]?'规则推荐 · 非统计结论':(tipItem.order?'核心第 '+tipItem.order+' 件':'常出统计')}</span>
+        </div>
+      ` : ''}
+    `;
+  } else if (state.overlayScene === "offers") {
+    inner = `
+      <div style="position:absolute;inset:15% 6% 12%;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+        ${offer.slots.map(r => `
+          <div style="position:relative;border-radius:12px;background:rgba(24,33,52,0.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;">
+            <div style="position:absolute;${state.badgePos==='top'?'top:12px;':'bottom:12px;'}left:12px;right:12px;background:rgba(12,16,24,${bgAlpha});border:1.5px solid ${r.verdict==='best'?'#4ADE80':r.verdict==='ok'?'#4CA3FF':'#F87171'};border-radius:10px;padding:9px;text-align:center;font-size:12.5px;">
+              <div style="font-weight:700;color:${r.verdict==='best'?'#4ADE80':r.verdict==='ok'?'#4CA3FF':'#F87171'}">${r.verdict==='best'?'首选':r.verdict==='ok'?'可选':'可考虑刷新'}</div>
+              <div>${r.score>0?'+':''}${r.score.toFixed(1)} · 胜率 ${pct(r.win)}</div>
+            </div>
+            <strong style="font-size:15px;">${r.name}</strong>
+          </div>
+        `).join("")}
+      </div>`;
+  } else {
+    inner = `
+      <div style="position:absolute;inset:15% 6% 10%;display:flex;flex-direction:column;justify-content:space-between;">
+        <div style="display:flex;justify-content:center;gap:14px;">
+          ${BENCH.map(c => `<div style="text-align:center;"><div style="width:54px;height:54px;border-radius:10px;background:rgba(255,255,255,0.1);border:${c.best?'2px solid #FDE047':'1px solid rgba(255,255,255,0.18)'};display:grid;place-items:center;font-size:13px;font-weight:700;">${c.name}</div><div style="margin-top:6px;font-size:12px;font-weight:700;color:${c.win>(b.brief.win||0.5)?'#4ADE80':'#CBD5E1'};">${c.grade} ${pct(c.win)}</div></div>`).join("")}
+        </div>
+        <div style="width:300px;background:rgba(12,16,24,${bgAlpha});border-radius:11px;padding:12px 14px;font-size:12.5px;line-height:1.6;">
+          <div style="color:#4CA3FF;font-weight:700;margin-bottom:4px;">左下角聊天框 · 队友 ID 缓存</div>
+          ${TEAMMATES.slice(0,3).map(t => `<div style="font-family:var(--ah-mono);">${t.raw_name}</div>`).join("")}
+        </div>
+      </div>`;
+  }
+
+  return `
+    <div class="sec-head" style="margin-bottom:-12px;">
+      <div class="seg" id="seg-ov-scene">
+        <div class="seg-thumb"></div>
+        <button data-val="shop" class="${state.overlayScene==='shop'?'active':''}">商店装备框选</button>
+        <button data-val="offers" class="${state.overlayScene==='offers'?'active':''}">三选一标签</button>
+        <button data-val="champselect" class="${state.overlayScene==='champselect'?'active':''}">选人与队友</button>
+      </div>
+      ${state.ownedItems.size ? `<button class="btn" id="btn-clear-owned">重置已购（${state.ownedItems.size}）</button>` : `<span class="sec-note">绿框为下一件统计推荐，琥珀框为规则推荐</span>`}
+    </div>
+
+    <div class="canvas-stage">
+      <div class="canvas-label">1920×1080 无边框窗口模拟 · 鼠标穿透层</div>
+      ${inner}
+      <div class="hud-box" style="background:rgba(12,16,24,${bgAlpha});transform:scale(${state.settings.overlay_scale});">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+          <strong>${b.hero.name} · ${b.brief.grade}级 ${pct(b.brief.win)}</strong>
+          <span style="color:#4CA3FF;">${BAND_LABELS[state.band]}</span>
+        </div>
+        <div style="color:#CBD5E1;">核心：${allItems.slice(0,3).map(x=>shortItemName(x.name)).join(" → ")}</div>
+        ${rules[0] ? `<div style="color:#FBBF24;margin-top:4px;">规则：${rules[0].name}（非统计）</div>` : ''}
+      </div>
+    </div>
+
+    <div class="controls-bar">
+      <label>浮窗不透明度 <strong>${state.settings.overlay_opacity}%</strong>
+        <input type="range" id="rng-op" min="40" max="100" value="${state.settings.overlay_opacity}" style="width:110px;accent-color:var(--ah-accent);" />
+      </label>
+      <label>缩放 <strong>${Math.round(state.settings.overlay_scale*100)}%</strong>
+        <input type="range" id="rng-sc" min="80" max="120" value="${Math.round(state.settings.overlay_scale*100)}" style="width:110px;accent-color:var(--ah-accent);" />
+      </label>
+      <div class="seg" id="seg-badge-pos">
+        <div class="seg-thumb"></div>
+        <button data-val="top" class="${state.badgePos==='top'?'active':''}">标签在标题上方</button>
+        <button data-val="bottom" class="${state.badgePos==='bottom'?'active':''}">标签在卡片下方</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderSettings() {
+  return `
+    <section>
+      <div class="sec-head">
+        <h2 class="sec-title">外观模式</h2>
+        <span class="sec-note">对应 Settings.theme_mode · Win10/11 渲染一致</span>
+      </div>
+      <div class="theme-picker" id="theme-picker">
+        <button class="theme-opt ${state.themeMode==='light'?'active':''}" data-theme-pick="light">
+          <div class="theme-preview"><div style="background:#EFEFED"></div><div style="background:#F8F8F6;padding:8px;"><div style="height:8px;width:55%;background:#0060C7;border-radius:3px;margin-bottom:6px;"></div><div style="height:18px;background:#FFFFFF;border-radius:4px;"></div></div></div>
+          <strong style="font-size:13.5px;color:var(--ah-ink);">浅色（暖瓷白）</strong>
+        </button>
+        <button class="theme-opt ${state.themeMode==='dark'?'active':''}" data-theme-pick="dark">
+          <div class="theme-preview"><div style="background:#14171E"></div><div style="background:#0E1014;padding:8px;"><div style="height:8px;width:55%;background:#4CA3FF;border-radius:3px;margin-bottom:6px;"></div><div style="height:18px;background:#181C24;border-radius:4px;"></div></div></div>
+          <strong style="font-size:13.5px;color:var(--ah-ink);">深色（墨石黑）</strong>
+        </button>
+        <button class="theme-opt ${state.themeMode==='system'?'active':''}" data-theme-pick="system">
+          <div class="theme-preview" style="display:block;background:linear-gradient(135deg,#F8F8F6 0%,#F8F8F6 49.5%,#0E1014 50.5%,#0E1014 100%);"></div>
+          <strong style="font-size:13.5px;color:var(--ah-ink);">跟随系统</strong>
+        </button>
+      </div>
+    </section>
+
+    <section>
+      <div class="sec-head"><h2 class="sec-title">功能开关</h2><span class="sec-note">改动立即生效并写入 config.json</span></div>
+      <div class="setting-list">
+        ${[
+          ["shop_overlay", "商店界面框选推荐装备", "局内打开商店时标注核心前 3 件顺位与单件持有率"],
+          ["enemy_rules", "按敌方阵容规则提示抗性装备", "基于英雄定位的规则建议，界面显式标注非统计结论"],
+          ["teammate_ocr", "选人时识别聊天框队友 ID", "只截屏识别并提供一键复制，不连接游戏客户端"],
+          ["check_data_updates", "自动获取最新统计数据", "启动时校验 SHA-256 并在对局外静默切换"],
+          ["autostart", "开机自动启动", "写入当前用户启动项，无需管理员权限"]
+        ].map(([k, title, desc]) => `
+          <div class="setting-item">
+            <div><strong>${title}</strong><span>${desc}</span></div>
+            <label class="switch"><input type="checkbox" data-setting="${k}" ${state.settings[k]?'checked':''}><span class="switch-track"></span></label>
+          </div>
+        `).join("")}
+      </div>
+    </section>
+
+    <footer style="padding-top:16px;border-top:1px solid var(--ah-line);font-size:13px;color:var(--ah-muted);line-height:1.7;">
+      <strong style="color:var(--ah-ink);">AramHex 海克斯大乱斗助手 v1.3.0</strong> · 非官方开源工具，禁止商用，与腾讯及 Riot Games 无关。<br>
+      数据署名：<span style="color:var(--ah-accent);">海克斯大乱斗统计数据（github.com/czgreat/aramhex-data），CC BY-NC 4.0</span>
+    </footer>
+  `;
+}
+
+// ============================================================================
+// Command Palette & Event Wiring
+// ============================================================================
+async function openCmd(purpose = "hero", slot = 0) {
+  state.cmdOpen = true; state.cmdPurpose = purpose; state.cmdSlot = slot; state.cmdSel = 0;
+  document.getElementById("cmd-backdrop").classList.add("open");
+  const inp = document.getElementById("cmd-input");
+  inp.value = "";
+  inp.placeholder = purpose === "enemy" ? `选择敌方位置 ${slot + 1} 的英雄…` : "输入英雄名、称号或拼音缩写（如 ys、jks、al）";
+  document.getElementById("cmd-hint").textContent = state.live ? "已直连本地引擎 · 支持全 173 英雄实时检索" : "启动 scripts/preview_server.py 可解锁全 173 英雄";
+  await refreshCmd("");
+  setTimeout(() => inp.focus(), 16);
+}
+function closeCmd() { state.cmdOpen = false; document.getElementById("cmd-backdrop").classList.remove("open"); }
+async function refreshCmd(q) {
+  let list = [];
+  if (state.live) {
+    const r = await fetch(`/api/heroes?q=${encodeURIComponent(q)}&limit=14`);
+    if (r.ok) list = (await r.json()).heroes || [];
+  } else {
+    const pool = state.cmdPurpose === "enemy"
+      ? ENEMY_ROSTER.map(e => ({ id: e.hero_id, name: e.name, nick: "", roles: e.roles, win: 0.51, grade: "A" }))
+      : Object.values(OFFLINE_HEROES).map(x => ({ id: x.hero.id, name: x.hero.name, nick: x.hero.nick, roles: x.hero.roles, win: x.brief.win, grade: x.brief.grade, keywords: x.hero.keywords }));
+    const ql = q.trim().toLowerCase();
+    list = pool.filter(h => !ql || `${h.name} ${h.nick} ${h.keywords||''}`.toLowerCase().includes(ql));
+  }
+  state.cmdItems = list; state.cmdSel = 0; renderCmdList();
+}
+function renderCmdList() {
+  const box = document.getElementById("cmd-list");
+  box.innerHTML = state.cmdItems.length ? state.cmdItems.map((h, i) => `
+    <div class="palette-row ${i===state.cmdSel?'sel':''}" data-cmd-pick="${i}">
+      <div class="hero-emblem" style="width:34px;height:34px;border-radius:8px;font-size:13px;background:${heroColor(h.id, h.roles)}">${h.name.slice(0,2)}</div>
+      <div style="flex:1;">
+        <div style="font-size:14px;font-weight:600;">${h.name} <span style="font-weight:400;color:var(--ah-muted);font-size:13px;">${h.nick||''}</span></div>
+        <div style="font-size:12px;color:var(--ah-muted);">${(h.roles||[]).map(r=>ROLE_CN[r]||r).join(" / ")}</div>
+      </div>
+      ${h.grade ? `<span class="tag ${h.grade==='S'?'gold':h.grade==='A'?'good':'neutral'}">${h.grade} · ${pct(h.win)}</span>` : ''}
+    </div>
+  `).join("") : `<div style="padding:22px;text-align:center;color:var(--ah-muted);font-size:13px;">未找到匹配的英雄</div>`;
+  box.querySelectorAll("[data-cmd-pick]").forEach(el => el.addEventListener("click", () => pickCmd(Number(el.dataset.cmdPick))));
+}
+async function pickCmd(idx) {
+  const h = state.cmdItems[idx]; if (!h) return; closeCmd();
+  if (state.cmdPurpose === "enemy") {
+    const next = [...state.enemyIds]; next[state.cmdSlot] = h.id;
+    state.enemyIds = Array.from(new Set(next.filter(Boolean))).slice(0, 5);
+    showToast(`已设置敌方英雄：${h.name}`);
+    await postLive("/api/enemies", { hero_ids: state.enemyIds, source: "manual" });
+  } else {
+    state.heroId = h.id; state.ownedItems.clear();
+    showToast(`已切换英雄：${h.name}`);
+    if (state.live) await syncLive(); else render();
+  }
+}
+
+function updateJson(b) {
+  const data = state.jsonTab === "shop" ? b.shop : state.jsonTab === "settings" ? b.settings : b.snapshot;
+  document.getElementById("json-pre").textContent = JSON.stringify(data, null, 2);
+}
+
+function render() {
+  applyTheme();
+  const b = getBundle(), ph = PHASES[state.phaseIdx];
+  document.getElementById("topbar-title").textContent = TAB_TITLES[state.tab];
+  document.getElementById("status-dot").className = "status-dot " + ph.dot;
+  document.getElementById("status-label").textContent = ph.label;
+  document.querySelectorAll("#nav .nav-item").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === state.tab));
+  document.querySelectorAll("#seg-band button").forEach(btn => btn.classList.toggle("active", btn.dataset.val === state.band));
+
+  const main = document.getElementById("content");
+  main.innerHTML = state.tab === "builds" ? renderBuilds(b)
+    : state.tab === "augments" ? renderAugments(b)
+    : state.tab === "champselect" ? renderChampSelect(b)
+    : state.tab === "overlay" ? renderOverlay(b)
+    : renderSettings();
+
+  // Dynamic bindings
+  document.getElementById("btn-hero-pick")?.addEventListener("click", () => openCmd("hero"));
+  document.querySelectorAll("[data-preset-enemy]").forEach(btn => btn.addEventListener("click", async () => {
+    const k = btn.dataset.presetEnemy;
+    state.enemyIds = [...ENEMY_PRESETS[k].ids];
+    showToast(`敌方阵容已切换：${ENEMY_PRESETS[k].label}`);
+    await postLive("/api/enemies", { hero_ids: state.enemyIds, source: "loading_ocr" });
+  }));
+  document.querySelectorAll("[data-enemy-slot]").forEach(el => el.addEventListener("click", () => openCmd("enemy", Number(el.dataset.enemySlot))));
+  document.querySelectorAll("[data-toggle-owned], [data-shop-buy]").forEach(el => el.addEventListener("click", async () => {
+    const id = el.dataset.toggleOwned || el.dataset.shopBuy;
+    if (state.ownedItems.has(id)) { state.ownedItems.delete(id); showToast("已取消购入标记"); }
+    else { state.ownedItems.add(id); showToast("已标记购入，推荐顺位已推进"); }
+    if (state.live) await syncLive(); else render();
+  }));
+  document.querySelectorAll("[data-shop-hover]").forEach(el => el.addEventListener("mouseenter", () => { state.hoveredShopItem = el.dataset.shopHover; }));
+
+  const bindSeg = (id, fn) => { const s = document.getElementById(id); if (!s) return; s.querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => fn(btn.dataset.val))); };
+  bindSeg("seg-aug-sub", v => { state.augSub = v; render(); });
+  bindSeg("seg-offer-mode", v => { state.offerMode = v; render(); });
+  bindSeg("seg-aug-filter", v => { state.augFilter = v; render(); });
+  bindSeg("seg-ov-scene", v => { state.overlayScene = v; render(); });
+  bindSeg("seg-badge-pos", v => { state.badgePos = v; render(); });
+  document.getElementById("btn-clear-owned")?.addEventListener("click", async () => { state.ownedItems.clear(); if (state.live) await syncLive(); else render(); });
+  document.getElementById("rng-op")?.addEventListener("input", e => { state.settings.overlay_opacity = Number(e.target.value); render(); });
+  document.getElementById("rng-sc")?.addEventListener("input", e => { state.settings.overlay_scale = +(Number(e.target.value)/100).toFixed(2); render(); });
+  document.getElementById("btn-copy-all")?.addEventListener("click", () => copyText(TEAMMATES.map(t => t.raw_name).join("\n"), `全部 ${TEAMMATES.length} 位队友 ID`));
+  document.querySelectorAll("[data-copy]").forEach(btn => btn.addEventListener("click", () => copyText(btn.dataset.copy)));
+  document.querySelectorAll("[data-theme-pick]").forEach(btn => btn.addEventListener("click", async () => {
+    state.themeMode = btn.dataset.themePick;
+    showToast("外观模式已保存");
+    await postLive("/api/settings", { theme_mode: state.themeMode });
+  }));
+  document.querySelectorAll("[data-setting]").forEach(chk => chk.addEventListener("change", async e => {
+    const k = e.target.dataset.setting; state.settings[k] = e.target.checked;
+    showToast("设置已保存");
+    await postLive("/api/settings", { [k]: state.settings[k] });
+  }));
+
+  updateJson(b);
+  requestAnimationFrame(positionSegmentedThumbs);
+}
+
+// Static bindings
+document.querySelectorAll("#nav .nav-item").forEach(btn => btn.addEventListener("click", () => { state.tab = btn.dataset.tab; render(); }));
+document.querySelectorAll("#seg-band button").forEach(btn => btn.addEventListener("click", async () => {
+  state.band = btn.dataset.val; showToast(`参考分段：${BAND_LABELS[state.band]}`);
+  await postLive("/api/band", { band: state.band });
+}));
+document.getElementById("btn-theme").addEventListener("click", async () => {
+  const cur = document.getElementById("root").getAttribute("data-theme");
+  state.themeMode = cur === "dark" ? "light" : "dark";
+  showToast(state.themeMode === "dark" ? "已切换深色模式" : "已切换浅色模式");
+  await postLive("/api/settings", { theme_mode: state.themeMode });
+});
+document.getElementById("btn-phase").addEventListener("click", () => { state.phaseIdx = (state.phaseIdx + 1) % PHASES.length; render(); });
+document.getElementById("btn-cmd").addEventListener("click", () => openCmd("hero"));
+document.getElementById("btn-cmd-close").addEventListener("click", closeCmd);
+document.getElementById("cmd-backdrop").addEventListener("click", e => { if (e.target.id === "cmd-backdrop") closeCmd(); });
+document.getElementById("cmd-input").addEventListener("input", e => refreshCmd(e.target.value));
+document.getElementById("btn-json").addEventListener("click", () => { document.getElementById("json-backdrop").classList.add("open"); updateJson(getBundle()); requestAnimationFrame(positionSegmentedThumbs); });
+document.getElementById("btn-json-close").addEventListener("click", () => document.getElementById("json-backdrop").classList.remove("open"));
+document.getElementById("json-backdrop").addEventListener("click", e => { if (e.target.id === "json-backdrop") document.getElementById("json-backdrop").classList.remove("open"); });
+document.querySelectorAll("#seg-json button").forEach(btn => btn.addEventListener("click", () => {
+  state.jsonTab = btn.dataset.val;
+  document.querySelectorAll("#seg-json button").forEach(b => b.classList.toggle("active", b === btn));
+  updateJson(getBundle());
+  requestAnimationFrame(positionSegmentedThumbs);
+}));
+window.addEventListener("resize", positionSegmentedThumbs);
+window.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); state.cmdOpen ? closeCmd() : openCmd("hero"); }
+  else if (state.cmdOpen) {
+    if (e.key === "Escape") closeCmd();
+    else if (e.key === "ArrowDown") { e.preventDefault(); state.cmdSel = (state.cmdSel + 1) % Math.max(1, state.cmdItems.length); renderCmdList(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); state.cmdSel = (state.cmdSel - 1 + Math.max(1, state.cmdItems.length)) % Math.max(1, state.cmdItems.length); renderCmdList(); }
+    else if (e.key === "Enter") { e.preventDefault(); pickCmd(state.cmdSel); }
+  }
+});
+
+render();
+setTimeout(() => document.getElementById("root").classList.remove("first-load"), 450);
+tryConnectLive();
+</script>
+</body>
+</html>

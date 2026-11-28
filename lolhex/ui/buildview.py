@@ -30,7 +30,7 @@ def spell_pair(icons, row: dict, size: int) -> str:
     return "&nbsp;".join(out)
 
 
-def skills_line(d: dict, show_win: bool) -> str | None:
+def skills_line(d: dict, show_win: bool, muted: str = GRAY) -> str | None:
     """加点只写主副：「主 Q · 副 E」（不列逐级加点）。"""
     sk = d.get("skills") or []
     mx = [k for k in (sk[0].get("max") or []) if k in "QWE"] if sk else []
@@ -38,28 +38,28 @@ def skills_line(d: dict, show_win: bool) -> str | None:
         return None
     s = "<b>加点</b>　主 " + mx[0] + (" · 副 " + mx[1] if len(mx) > 1 else "")
     if show_win and sk[0].get("win") is not None:
-        s += f" <span style='color:{GRAY}'>{_pct(sk[0]['win'])}</span>"
+        s += f" <span style='color:{muted}'>{_pct(sk[0]['win'])}</span>"
     return s
 
 
-def lines(d: dict, icons, show_win: bool, size: int = 24, compact: bool = False) -> list[str]:
+def lines(d: dict, icons, show_win: bool, size: int = 24, compact: bool = False, muted: str = GRAY) -> list[str]:
     """出装相关的几行：召唤师技能（有数据时）、核心三件（最多 3 套）、鞋子、出门装。compact=浮窗（图标小一号、行更紧凑）。"""
     b = d.get("builds") or {}
-    wr = (lambda x: f" <span style='color:{GRAY}'>{_pct(x)}</span>") if show_win else (lambda x: "")
+    wr = (lambda x: f" <span style='color:{muted}'>{_pct(x)}</span>") if show_win else (lambda x: "")
     out = []
     sums = d.get("summoners") or []  # panel.sort_summoners 已经筛好（出场 ≥3% 且 ≥1000 局、按胜率、最多三组）
     if sums and d.get("summoner_source"):
-        out.append("<span style='color:" + GRAY + "'>召唤师技能：" + escape(d["summoner_source"])
+        out.append("<span style='color:" + muted + "'>召唤师技能：" + escape(d["summoner_source"])
                    + " · " + escape(str(d.get("summoner_source_date") or "日期未知")) + "</span>")
     def stat(s):  # 胜率在前（按胜率排的），排得下就带上出场；关了显示胜率只写出场
         return (f"胜率 {_pct(s.get('win'))} · " if show_win else "") + f"出场 {_pct(s.get('pick'))}"
     if sums and compact:  # 浮窗：一组一行，第一行带标题，第二行对齐
         for i, s in enumerate(sums):
             head = "<b>召唤师技能</b>　" if i == 0 else "<span style='color:transparent'><b>召唤师技能</b></span>　"
-            out.append(head + spell_pair(icons, s, size) + f" <span style='color:{GRAY}'>{stat(s)}</span>")
+            out.append(head + spell_pair(icons, s, size) + f" <span style='color:{muted}'>{stat(s)}</span>")
     elif sums:
         out.append("<b>召唤师技能</b>")
-        out.extend(f"　{spell_pair(icons, s, size)} <span style='color:{GRAY}'>{stat(s)}</span>" for s in sums)
+        out.extend(f"　{spell_pair(icons, s, size)} <span style='color:{muted}'>{stat(s)}</span>" for s in sums)
 
     its = (d.get("item_stats") or [])[: 4 if compact else 6]
     if its:  # 统计数据里的装备（数据里有 hero_items.json 才有）
@@ -71,7 +71,7 @@ def lines(d: dict, icons, show_win: bool, size: int = 24, compact: bool = False)
     cores = b.get("core") or []
     if cores:  # 选了分段时标出用的是哪档（前 5% 或全体）
         band = d.get("core_band")
-        out.append("<b>核心三件</b>" + (f" <span style='color:{GRAY}'>{escape(band)}</span>" if band else ""))
+        out.append("<b>核心三件</b>" + (f" <span style='color:{muted}'>{escape(band)}</span>" if band else ""))
         out.extend("　" + core(c) for c in cores[:3])
     shoes = (b.get("shoes") or [])[:2]
     if shoes:

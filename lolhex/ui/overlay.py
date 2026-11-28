@@ -456,7 +456,8 @@ class BadgeLayer(_Layer):
             text_x = x + size + 6
             text_w = x + width - text_x
             stat = self._item_hint_stat(row, hint, show_win)
-            stat_w = min(fm.horizontalAdvance(stat), text_w)
+            # 非整数缩放字体（macOS/Linux 回退字体）的 horizontalAdvance 可能比实际渲染窄 1px，留 2px 余量避免 elidedText 截断末尾字符
+            stat_w = min(max(fm.horizontalAdvance(stat), fm.boundingRect(stat).width()) + 2, text_w) if stat else 0
             p.setPen(QColor(240, 240, 245))
             name_w = max(0, text_w - stat_w - 12)
             p.drawText(QRect(text_x, y + 2, name_w, 18), Qt.AlignLeft,
@@ -618,6 +619,117 @@ class ChampSelectLayer(_Layer):
                     p.setPen(QColor(240, 200, 90) if s is best_card else QColor(170, 176, 190))
                     p.drawText(QRect(r.x(), line.bottom(), r.width(), r.bottom() - line.bottom()),
                                Qt.AlignHCenter | Qt.AlignTop, "★ 推荐" if s is best_card else sub)
+        p.end()
+        self._publish(drawn, dpr)
+
+
+class ShopLayer(_Layer):
+    """模块 B：局内商店装备框选层。
+
+    在识别到的商店装备格子外围画框并标核心顺位（#1–#3）、单件选取率/胜率；
+    敌方阵容规则命中的装备以琥珀框标明「规则」，与统计蓝/绿框严格区分。
+    图标中心不登记遮罩，保证 ItemIconBank 可持续稳定读取。
+    """
+
+    name = "商店框选"
+
+    def __init__(self):
+        super().__init__()
+        self.shop: dict | None = None
+        self.show_win = True
+        self.bg_alpha = 218
+
+    def update_from(self, snap: dict, rect, hwnd: int = 0) -> None:
+        settings = snap.get("settings") or {}
+        shop = snap.get("shop")
+        if (
+            not settings.get("shop_overlay", True)
+            or not isinstance(shop, dict)
+            or not shop.get("open")
+            or not shop.get("slots")
+            or rect is None
+        ):
+            self.shop = None
+            self.hide()
+            return
+        self.show_win = settings.get("show_winrate", True)
+        opacity = int(settings.get("overlay_opacity", 85))
+        self.bg_alpha = max(100, min(255, int(round(opacity * 2.55))))
+        self._place(rect, hwnd)
+        if shop != self.shop:
+            self.shop = shop
+            self.update()
+
+    def paintEvent(self, _):
+        shop = self.shop
+        if not shop or not shop.get("slots"):
+            win.set_drawn(type(self).__name__, [])
+            return
+        drawn = []
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.TextAntialiasing)
+        dpr = self._scale()
+        ox, oy = self.origin.x(), self.origin.y()
+        for s in shop.get("slots") or ():
+            box = s.get("box")
+            if not box or len(box) != 4:
+                continue
+            x0, y0, x1, y1 = ((box[0] - ox) / dpr, (box[1] - oy) / dpr,
+                              (box[2] - ox) / dpr, (box[3] - oy) / dpr)
+            pw, ph = x1 - x0, y1 - y0
+            is_owned = bool(s.get("owned"))
+            is_next = bool(s.get("is_next")) and not is_owned
+            is_rule = s.get("source") == "rule" and not is_owned
+            order = s.get("order")
+            pick = s.get("pick")
+            # 仅框选有推荐价值的装备（下一件 / 核心前 3 件 / 规则推荐 / 常出高选取 / 已购）
+            if not (is_next or is_rule or order is not None or is_owned or (pick is not None and pick >= 0.25)):
+                continue
+            if is_owned:
+                border = QColor(96, 165, 250, 180)
+                badge_txt = "已购"
+            elif is_next:
+                border = QColor(74, 222, 128)
+                badge_txt = f"#{order} 推荐" if order else "推荐"
+            elif is_rule:
+                border = QColor(251, 191, 36)
+                badge_txt = "规则"
+            elif order is not None:
+                border = QColor(76, 163, 255)
+                badge_txt = f"#{order}"
+            else:
+                border = QColor(76, 163, 255, 190)
+                badge_txt = f"选{int(round(pick * 100))}%"
+            frame = QRect(int(x0) - 2, int(y0) - 2, int(pw) + 4, int(ph) + 4)
+            p.setPen(QPen(border, 2))
+            p.setBrush(Qt.NoBrush)
+            p.drawRoundedRect(frame, 4, 4)
+            # 只把四条边框登记为遮罩，中心图标留给后续识别读取
+            drawn += [
+                QRect(frame.x(), frame.y(), frame.width(), 2),
+                QRect(frame.x(), frame.bottom() - 1, frame.width(), 2),
+                QRect(frame.x(), frame.y(), 2, frame.height()),
+                QRect(frame.right() - 1, frame.y(), 2, frame.height()),
+            ]
+            px = max(9, int(pw * 0.22))
+            font = QFont("Microsoft YaHei UI")
+            font.setPixelSize(px)
+            font.setBold(True)
+            p.setFont(font)
+            stat = ""
+            if is_rule and self.show_win and s.get("win") is not None:
+                stat = f" {_pct(s['win'])}"
+            elif order is not None and pick is not None:
+                stat = f" {int(round(pick * 100))}%"
+            label = badge_txt + stat
+            tag_rect = QRect(int(x0 - 6), int(y1 + 2), int(pw + 12), int(px * 1.5))
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(11, 15, 22, self.bg_alpha))
+            p.drawRoundedRect(tag_rect, 4, 4)
+            p.setPen(border)
+            p.drawText(tag_rect, Qt.AlignCenter, QFontMetrics(font).elidedText(label, Qt.ElideRight, tag_rect.width() - 4))
+            drawn.append(tag_rect)
         p.end()
         self._publish(drawn, dpr)
 
@@ -1222,6 +1334,7 @@ class Overlay:
         self.badges = BadgeLayer()
         self.badges.icons = engine.icons
         self.champ = ChampSelectLayer()
+        self.shop = ShopLayer()
         self.panel = ControlPanel(engine, engine.settings.overlay_corner)
         self.visible = engine.settings.overlay
         self._bg = None
@@ -1243,6 +1356,8 @@ class Overlay:
             self.panel.hide()
             self.badges.hide()
             self.champ.hide()
+            if getattr(self, "shop", None) is not None:
+                self.shop.hide()
 
     def apply_bg(self) -> None:
         """详情的背景（详情里的「背景」按钮，1.2.0）：透明（1.1.9 的样子）/ 半透明 / 不透明。
@@ -1299,6 +1414,8 @@ class Overlay:
         source = self.panel.typing_source() if cloud.feature("panel_typing_in_game") else None
         over_game = game_foreground if source is None else bool(grect) and source == game
         self.badges.update_from(snap, grect if over_game else None, game)
+        if getattr(self, "shop", None) is not None:
+            self.shop.update_from(snap, grect if over_game else None, game)
         client = None if grect else win.find_client_window()
         crect = win.client_rect(client) if client else None
         # 1.2.0 起不注册详情快捷键（不好按，只用鼠标唤出）；云控 features.overlay_hotkey=true 退回 1.1.9
@@ -1403,6 +1520,7 @@ def run(make_engine, minimized: bool = False) -> int:
         crashlog.enable(app_home())
 
     engine = make_engine()
+    theme.apply(app, getattr(engine.settings, "theme_mode", "system"))
     engine.start()
     ov = Overlay(engine)
     ov.set_visible(engine.settings.overlay)

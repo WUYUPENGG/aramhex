@@ -19,7 +19,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import cloud, i18n, recommend
+from . import cloud, i18n, item_rules, recommend
 from .config import Settings, app_home
 from .data.public import PublicStore
 from .data.store import DataStore
@@ -140,6 +140,11 @@ class Engine:
         self._rescan = threading.Event()
         self._detector = None  # 延迟创建，避免没进游戏就加载 OCR 模型
         self._icon_bank = None  # 英雄头像库，头像下载好后创建
+        self._item_bank = None  # 装备图标库（模块 B，离线从 item_icons.json 延迟构建）
+        self._teammate_tracker = None  # 选人聊天框队友 ID 多帧缓存（模块 E1）
+        self._loading_tracker = None   # 加载界面敌方 5 人追踪器（模块 C）
+        self._shop_memo = None         # 局内商店格子静止缓存（模块 B）
+        self._last_aux_scan = 0.0
         from .data.icons import IconCache
         self.icons = IconCache(self.home / "data" / "img", allow_network=False)
         self._cs_memo = None    # 选人界面各位置的识别结果缓存（champselect.Memo）
@@ -155,7 +160,10 @@ class Engine:
             "game_window": False, "client_window": False,
             "vision": {"status": "idle", "calibrated": False, "last_scan": None, "blank": False},
             "offer": None, "evaluation": None,
-            "champ_select": None,  # {"bench": [...], "team": [...]}，每项带胜率和排名
+            "champ_select": None,  # {"bench": [...], "team": [...], "teammates"?: [...]}，每项带胜率和排名
+            "enemies": None,       # 模块 C：敌方 5 人与定位画像
+            "shop": None,          # 模块 B：商店打开时的装备框选状态
+            "picked_augments": [], # 模块 D 预留：已选海克斯 ID 列表
         }
 
     # ---------- 生命周期 ----------
@@ -177,8 +185,19 @@ class Engine:
         with self._lock:
             s = copy.deepcopy(self.state)
         s["data"] = self.store.status()
-        s["settings"] = {"show_winrate": self.settings.show_winrate, "badge_position": self.settings.badge_position,
-                         "overlay_on_demand": self.settings.overlay_on_demand}
+        st = self.settings
+        s["settings"] = {
+            "show_winrate": getattr(st, "show_winrate", True),
+            "badge_position": getattr(st, "badge_position", "top"),
+            "overlay_on_demand": getattr(st, "overlay_on_demand", True),
+            "theme_mode": getattr(st, "theme_mode", "system"),
+            "ui_preset": getattr(st, "ui_preset", "liquid"),
+            "shop_overlay": getattr(st, "shop_overlay", True),
+            "enemy_rules": getattr(st, "enemy_rules", True),
+            "teammate_ocr": getattr(st, "teammate_ocr", True),
+            "overlay_opacity": getattr(st, "overlay_opacity", 85),
+            "overlay_scale": getattr(st, "overlay_scale", 1.0),
+        }
         s["hero"] = self.store.heroes.get(s["hero_id"] or "")
         s["candidates"] = [self.store.heroes.get(h, {"id": h}) for h in s["hero_candidates"]]
         return s
@@ -248,6 +267,278 @@ class Engine:
         self.state["vision"]["calibrated"] = False
         self._rescan.set()
 
+    def set_enemies(self, hero_ids: list[str] | None, source: str = "manual") -> dict | None:
+        """设置当前对局敌方阵容（最多 5 人），触发规则式出装重算。"""
+        with getattr(self.store, "_lock", nullcontext()):
+            profile = item_rules.enemy_profile(self.store, hero_ids, source=source) if hero_ids else None
+        with self._lock:
+            self.state["enemies"] = profile
+            self._panel_cache = (None, None)
+        return profile
+
+    def rescan_teammates(self) -> None:
+        """清除选人阶段已缓存的队友 ID，下一轮选人扫描时重新读取聊天框。"""
+        with self._lock:
+            self._teammates_cache = None
+            if getattr(self, "_teammate_tracker", None) is not None:
+                self._teammate_tracker.reset()
+            cs = self.state.get("champ_select")
+            if isinstance(cs, dict) and "teammates" in cs:
+                cs = {**cs, "teammates": [], "teammates_status": "scanning"}
+                self.state["champ_select"] = cs
+
+    def _ensure_item_bank(self):
+        if getattr(self, "_item_bank", None) is None:
+            from .vision.shop import ItemIconBank
+            cache_dir = getattr(self, "home", None)
+            item_dir = (cache_dir / "data" / "img" / "item") if cache_dir else None
+            meta = getattr(self.store, "item_metadata", None)
+            allowed = {str(k) for k in meta} if isinstance(meta, dict) and meta else None
+            bank = ItemIconBank.from_bundled(item_dir, allowed_ids=allowed)
+            if len(bank):
+                self._item_bank = bank
+                log.info("装备图标库：%d 件", len(bank))
+        return getattr(self, "_item_bank", None)
+
+    def scan_teammates(self, img, detect=None, memo=None) -> tuple[list[dict], str]:
+        """模块 E1：读取选人界面左下角聊天框队友 ID（凑齐后冻结缓存，不再重复 OCR）。"""
+        if not getattr(self.settings, "teammate_ocr", True):
+            return [], "disabled"
+        from .vision import teammates as tm_mod
+        tracker = getattr(self, "_teammate_tracker", None)
+        if tracker is None:
+            tracker = tm_mod.TeammateTracker()
+            self._teammate_tracker = tracker
+        if tracker.done:
+            return tracker.snapshot(), tracker.status
+        if detect is None:
+            from .vision.ocr import OCR
+            detect = OCR.get().detect
+        return tm_mod.read_chat(img, detect, tracker=tracker, memo=memo)
+
+    def scan_loading_enemies(self, img, *, name_reader=None, portrait_boxes=None, name_boxes=None) -> dict | None:
+        """模块 C：加载界面识别敌方 5 名英雄，确认锁定后写入 enemies 并触发规则出装。"""
+        if not getattr(self.settings, "enemy_rules", True):
+            return None
+        existing = self.state.get("enemies")
+        if existing:
+            return existing
+        from .vision import loading
+        tracker = getattr(self, "_loading_tracker", None)
+        if tracker is None:
+            tracker = loading.LoadingTracker()
+            self._loading_tracker = tracker
+        if tracker.done:
+            return existing
+        kwargs = {}
+        if portrait_boxes is not None:
+            kwargs["portrait_boxes"] = portrait_boxes
+        if name_boxes is not None:
+            kwargs["name_boxes"] = name_boxes
+        found = loading.read_enemies(img, getattr(self, "_icon_bank", None), name_reader=name_reader, **kwargs)
+        locked = tracker.observe(found)
+        if locked:
+            return self.set_enemies(locked, source="loading_ocr")
+        return None
+
+    def scan_shop(self, img, origin: tuple[int, int] = (0, 0), *, anchor_reader=None, layout=None) -> dict | None:
+        """模块 B：识别局内商店格子与已购装备，并融合单件统计、顺位和规则推荐写入 state['shop']。"""
+        if not getattr(self.settings, "shop_overlay", True):
+            self._set(shop=None)
+            return None
+        bank = self._ensure_item_bank()
+        if bank is None or not len(bank):
+            return None
+        from .vision import champselect, shop as shop_mod
+        if getattr(self, "_shop_memo", None) is None:
+            self._shop_memo = champselect.Memo()
+        raw = shop_mod.read_shop(
+            img,
+            bank,
+            origin,
+            layout=layout or shop_mod.DEFAULT_LAYOUT,
+            anchor_reader=anchor_reader,
+            memo=self._shop_memo,
+        )
+        if not raw.get("open"):
+            if self.state.get("shop") is not None:
+                self._set(shop=None)
+            return None
+        rec = self.shop_recommendations(owned_items=raw.get("owned_items") or [])
+        by_id = {str(it["item_id"]): it for it in (rec or {}).get("items", [])}
+        next_id = (rec or {}).get("next_recommended_id")
+        enriched_slots = []
+        for slot in raw["slots"]:
+            iid = str(slot["item_id"])
+            info = by_id.get(iid) or {}
+            enriched_slots.append({
+                **slot,
+                "name": info.get("name"),
+                "pick": info.get("pick"),
+                "win": info.get("win"),
+                "games": info.get("games"),
+                "order": info.get("order"),
+                "owned": bool(info.get("owned", iid in (raw.get("owned_items") or ()))),
+                "low_sample": bool(info.get("low_sample", False)),
+                "source": info.get("source", "stats"),
+                "rule_reason": info.get("rule_reason"),
+                "disclaimer": info.get("disclaimer"),
+                "is_next": bool(next_id and iid == next_id),
+            })
+        shop_state = {
+            "open": True,
+            "hero_id": (rec or {}).get("hero_id") or self.state.get("hero_id"),
+            "band_label": (rec or {}).get("band_label", "全体"),
+            "owned_items": raw.get("owned_items") or [],
+            "next_recommended_id": next_id,
+            "slots": enriched_slots,
+            "rule_adjustments": (rec or {}).get("rule_adjustments") or [],
+        }
+        self._set(shop=shop_state)
+        return shop_state
+
+    def _aux_ingame_tick(self, rect) -> None:
+        """对局空闲时低频辅助扫描（模块 C 加载页敌方 + 模块 B 商店框选），与海克斯三选一互斥。"""
+        if not hasattr(self, "_lock") or not hasattr(self, "store"):
+            return
+        now = time.monotonic()
+        if now - getattr(self, "_last_aux_scan", 0.0) < 1.5 * getattr(self.settings, "speed_factor", 1.0):
+            return
+        need_enemies = (
+            getattr(self.settings, "enemy_rules", True)
+            and self.state.get("enemies") is None
+            and not (getattr(self, "_loading_tracker", None) and self._loading_tracker.done)
+            and getattr(self, "_icon_bank", None) is not None
+        )
+        need_shop = (
+            getattr(self.settings, "shop_overlay", True)
+            and bool(self.state.get("hero_id"))
+        )
+        if not need_enemies and not need_shop:
+            return
+        self._last_aux_scan = now
+        try:
+            from .vision import capture
+            frame = capture.grab(rect)
+            if capture.is_blank(frame):
+                return
+            if need_enemies:
+                self.scan_loading_enemies(frame)
+            if need_shop:
+                self.scan_shop(frame, (rect.left, rect.top))
+        except Exception:
+            log.debug("局内辅助识别跳过", exc_info=True)
+
+    def search_heroes(self, query: str = "", limit: int = 12) -> list[dict]:
+        """供主界面 / ⌘K 搜索与敌方选择器使用：按中文名、称号、别名、拼音/首字母模糊检索。"""
+        q = (query or "").strip().lower()
+        with getattr(self.store, "_lock", nullcontext()):
+            heroes = getattr(self.store, "heroes", None) or {}
+            rows = []
+            for hid, h in heroes.items():
+                name = str(h.get("name") or "")
+                nick = str(h.get("nick") or "")
+                terms = self.store.hero_terms(hid) if hasattr(self.store, "hero_terms") else [name, nick]
+                rank_score = 0
+                if q:
+                    low_name, low_nick = name.lower(), nick.lower()
+                    if low_name == q or low_nick == q:
+                        rank_score = 4
+                    elif low_name.startswith(q) or low_nick.startswith(q):
+                        rank_score = 3
+                    elif any(str(t).lower() == q for t in terms):
+                        rank_score = 3
+                    elif q in low_name or q in low_nick:
+                        rank_score = 2
+                    elif any(q in str(t).lower() for t in terms):
+                        rank_score = 1
+                    else:
+                        continue
+                brief = self.hero_brief(hid)
+                rows.append((
+                    -rank_score,
+                    -(brief.get("win") or 0.0),
+                    name,
+                    {
+                        "id": hid,
+                        "name": name,
+                        "nick": nick,
+                        "roles": list(h.get("roles") or []),
+                        "win": brief.get("win"),
+                        "rank": brief.get("rank"),
+                        "total": brief.get("total"),
+                        "grade": brief.get("grade"),
+                    },
+                ))
+            rows.sort(key=lambda x: (x[0], x[1], x[2]))
+            return [r[3] for r in rows[: max(1, int(limit))]]
+
+    def shop_recommendations(
+        self,
+        hero_id: str | None = None,
+        enemies: list[str] | dict | None = None,
+        owned_items: list[str] | set[str] | None = None,
+    ) -> dict | None:
+        """合并商店单件统计、前三件顺序、已购装备进度与敌方阵容规则推荐。"""
+        with getattr(self.store, "_lock", nullcontext()):
+            hid = self.store.resolve_hero(hero_id) if hero_id else self.state.get("hero_id")
+            if not hid or not hasattr(self.store, "shop_item_stats"):
+                return None
+            stats = self.store.shop_item_stats(hid)
+            if not stats:
+                return None
+            if enemies is None:
+                enemy_obj = self.state.get("enemies")
+            elif isinstance(enemies, dict):
+                enemy_obj = enemies
+            else:
+                enemy_obj = item_rules.enemy_profile(self.store, enemies, source="manual")
+            owned = {str(x) for x in (owned_items or ())}
+            hero_obj = (self.store.heroes or {}).get(hid) or {}
+            rules = (
+                item_rules.recommend_rule_items(
+                    stats,
+                    enemy_obj,
+                    hero_roles=hero_obj.get("roles") or [],
+                    owned_items=owned,
+                )
+                if getattr(self.settings, "enemy_rules", True) and enemy_obj
+                else []
+            )
+            rule_map = {r["item_id"]: r for r in rules}
+            items_out = []
+            next_recommended_id = None
+            for it in stats["items"]:
+                iid = str(it["item_id"])
+                is_owned = iid in owned
+                rule_hit = rule_map.get(iid)
+                row = {
+                    **it,
+                    "owned": is_owned,
+                    "source": "rule" if rule_hit else "stats",
+                    "rule_reason": rule_hit["rule_reason"] if rule_hit else None,
+                    "disclaimer": rule_hit["disclaimer"] if rule_hit else None,
+                }
+                if next_recommended_id is None and not is_owned and it.get("order") is not None:
+                    next_recommended_id = iid
+                items_out.append(row)
+            if next_recommended_id is None:
+                first_unowned = next((x["item_id"] for x in items_out if not x["owned"] and not x["low_sample"]), None)
+                next_recommended_id = first_unowned
+            return {
+                "hero_id": hid,
+                "band_label": stats["band_label"],
+                "total_games": stats["total_games"],
+                "base_win": stats["base_win"],
+                "core_order": stats["core_order"],
+                "core_builds": stats["core_builds"],
+                "owned_items": sorted(owned),
+                "next_recommended_id": next_recommended_id,
+                "items": items_out,
+                "rule_adjustments": rules,
+                "enemies": enemy_obj,
+            }
+
     def hero_panel(self, hero_key) -> dict | None:
         # Qt 定时刷新调用这里：资料缺失/过期也只读缓存和内置数据。
         # 玩家模式只用已验证快照；资料联网更新统一由数据线程完成。
@@ -257,17 +548,31 @@ class Engine:
             snapshot = official.snapshot if official is not None else None
             dataset = getattr(self.store, "dataset", None)
             rarity_rules = cloud.get()["augments"]["rarity_fix"]
+            enemies = self.state.get("enemies")
+            enemy_rules_on = getattr(self.settings, "enemy_rules", True)
+            enemy_key = (
+                tuple(h["hero_id"] for h in enemies.get("heroes") or []) if isinstance(enemies, dict) else (),
+                enemy_rules_on,
+            )
             if (self._panel_cache[0] == hid and self._panel_cache[1]
                     and getattr(self, "_panel_snapshot", None) is snapshot
                     and getattr(self, "_panel_dataset", None) is dataset
-                    and getattr(self, "_panel_rarity_rules", None) == rarity_rules):
+                    and getattr(self, "_panel_rarity_rules", None) == rarity_rules
+                    and getattr(self, "_panel_enemy_key", None) == enemy_key):
                 return self._panel_cache[1]
-            p = hero_panel(self.store, hid, self.settings.smoothing_games,
-                           allow_network=False) if hid else None
+            p = hero_panel(
+                self.store,
+                hid,
+                self.settings.smoothing_games,
+                allow_network=False,
+                enemies=enemies,
+                enemy_rules=enemy_rules_on,
+            ) if hid else None
             self._panel_cache = (hid, p)
             self._panel_snapshot = snapshot
             self._panel_dataset = dataset
             self._panel_rarity_rules = rarity_rules
+            self._panel_enemy_key = enemy_key
         return p
 
     # ---------- 数据 ----------
@@ -509,6 +814,10 @@ class Engine:
         if cards:
             cs = cs or {"bench": [], "team": [], "mine": None}
             cs["cards"] = [{**c, **self.hero_brief(c["hero_id"])} for c in cards]
+        if cs is not None and in_cs and getattr(self.settings, "teammate_ocr", True) and callable(getattr(ocr, "detect", None)):
+            mates, m_status = self.scan_teammates(img, detect=ocr.detect, memo=memo)
+            cs["teammates"] = mates
+            cs["teammates_status"] = m_status
         return cs
 
     def _drop_gone_cards(self, cards) -> None:
@@ -573,8 +882,15 @@ class Engine:
             self._manual_hero = False
             self._last_eval_log = None
             self._evaluation_revision += 1
+            self._panel_cache = (None, None)
+            if getattr(self, "_teammate_tracker", None) is not None:
+                self._teammate_tracker.reset()
+            if getattr(self, "_loading_tracker", None) is not None:
+                self._loading_tracker.reset()
+            self._shop_memo = None
             self.state.update(hero_id=None, hero_source=None, hero_candidates=[],
-                              offer=None, evaluation=None)
+                              offer=None, evaluation=None,
+                              enemies=None, shop=None, picked_augments=[])
 
     def _on_game_end(self) -> None:
         self._clear_selection()
@@ -834,6 +1150,8 @@ class Engine:
                             self._on_offer(None)
                 except Exception:
                     log.exception("三选一评估异常")
+            if not visible and not getattr(self, "_scan_discarded", False):
+                self._aux_ingame_tick(rect)
             self._stop.wait(0.1)
 
     def _scan_invalid_reason(self, context) -> str | None:

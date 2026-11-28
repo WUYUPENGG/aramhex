@@ -52,6 +52,8 @@ APP_DIR_NAME = "AramHex"
 DEFAULT_OVERLAY_HOTKEY = ""
 # 详情的背景（1.2.0，只在详情里点「背景」按钮换，设置页没有）：透明 = 1.1.9 的样子（详情几乎透明）；有玩家说看不清字，可以换到盖住后面的游戏画面
 OVERLAY_BGS = (("standard", "透明"), ("dark", "半透明"), ("solid", "不透明"))
+THEME_MODES = ("system", "light", "dark")
+UI_PRESETS = ("liquid", "apple", "esports")
 # 去掉的设置项：老设置文件里有也不再写回（1.1.1 删了 2999 接口；浮窗不再对截图隐身，录屏开关也删了；
 # 自动截图只是调试用，设置页去掉，只在调试模式（debug.txt）下截）
 REMOVED = {"use_liveclient", "allow_capture", "auto_screenshot"}
@@ -211,6 +213,14 @@ class Settings:
     # 界面上不显示；要关就把 config.json 里的 send_usage 改成 false
     install_id: str = ""
     send_usage: bool = True
+    # 外观与新功能开关（v2 前后端契约，见 docs/API_CONTRACT.md）
+    theme_mode: str = "system"      # system / light / dark
+    ui_preset: str = "liquid"       # liquid / apple / esports
+    shop_overlay: bool = True       # 局内商店装备框选
+    enemy_rules: bool = True        # 基于敌方阵容的规则式出装提示（显式标注非统计结论）
+    teammate_ocr: bool = True       # 选人左下角聊天框队友 ID 识别
+    overlay_opacity: int = 85       # 浮窗不透明度（30–100）
+    overlay_scale: float = 1.0      # 浮窗缩放倍率（0.8–1.25）
     # 玩家自己在设置里改过的项（1.1.1）：云控改默认值时不碰这些（见 cloudsettings.py）
     user_set: list = field(default_factory=list)
     extra: dict = field(default_factory=dict)
@@ -288,6 +298,19 @@ class Settings:
             s.user_set = [k for k in s.user_set if k != "overlay_on_demand"]
         if s.overlay_bg not in dict(OVERLAY_BGS):
             s.overlay_bg = "standard"  # 手改坏了：回到透明（1.1.9 的样子）
+        if s.theme_mode not in THEME_MODES:
+            s.theme_mode = "system"
+        if s.ui_preset not in UI_PRESETS:
+            s.ui_preset = "liquid"
+        for flag in ("shop_overlay", "enemy_rules", "teammate_ocr"):
+            if not isinstance(getattr(s, flag), bool):
+                setattr(s, flag, True)
+        if type(s.overlay_opacity) not in (int, float) or isinstance(s.overlay_opacity, bool):
+            s.overlay_opacity = 85
+        s.overlay_opacity = max(30, min(100, int(round(s.overlay_opacity))))
+        if type(s.overlay_scale) not in (int, float) or isinstance(s.overlay_scale, bool):
+            s.overlay_scale = 1.0
+        s.overlay_scale = round(max(0.8, min(1.25, float(s.overlay_scale))), 2)
         if not isinstance(s.overlay_hotkey, str):
             s.overlay_hotkey = DEFAULT_OVERLAY_HOTKEY
         # 1.1.1：设置页去掉「显示胜率数字」（用这个软件就是要看胜率），以前关掉的也打开
