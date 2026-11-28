@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import shutil
 import threading
 import time
@@ -436,7 +437,10 @@ class PublicStore(DataStore):
         self.check_updates = check_updates
         if base_url is None:
             from .. import cloud
-            urls = list(dict.fromkeys([u.rstrip("/") for u in cloud.mirrors("data")] + official.sources("data") + DATA_SOURCES))
+            env_mirrors = [u.strip().rstrip("/") for u in os.environ.get("ARAMHEX_DATA_MIRROR", "").split(",") if u.strip()]
+            urls = list(dict.fromkeys(
+                env_mirrors + [u.rstrip("/") for u in cloud.mirrors("data")] + official.sources("data") + DATA_SOURCES
+            ))
         else:
             urls = [base_url] if isinstance(base_url, str) else base_url
         self.base_urls = [u.rstrip("/") for u in urls]
