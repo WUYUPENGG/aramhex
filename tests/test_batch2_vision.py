@@ -74,6 +74,12 @@ def test_teammates_parse_multiframe_vote_and_freeze(tmp_path):
     _, st4 = eng.scan_teammates(img, detect=fake_detect)
     assert st4 == "scanning" and len(calls) == 3
 
+    # 国服实机 OCR 容错：「聊大」错字与 WeGame 带 #编号 发言前缀
+    assert teammates.parse_join_line("听过许多大道理#72642加入了队伍聊大") == "听过许多大道理#72642"
+    assert teammates.parse_join_line("生气了吗没有啊#61717：101资料站-沃利贝尔海克斯") == "生气了吗没有啊#61717"
+    assert teammates.parse_join_line("NWS、CRanZz1Y #67629：101资料站-韦鲁斯") == "NWS、CRanZz1Y#67629"
+    assert teammates.parse_join_line("普通玩家：不带编号的闲聊") is None
+
 
 # ==================== C：加载界面敌方 5 人识别 ====================
 
@@ -222,5 +228,41 @@ def test_mainwindow_shows_and_copies_teammates(tmp_path, monkeypatch):
     finally:
         w.hide()
         w.deleteLater()
+        eng.stop()
+        app.processEvents()
+
+
+def test_control_panel_shows_teammates_copy_and_enemy_rules(tmp_path):
+    PySide6 = pytest.importorskip("PySide6.QtWidgets")
+    from lolhex.ui.overlay import ControlPanel
+
+    app = PySide6.QApplication.instance() or PySide6.QApplication([])
+    eng = Engine(Settings(check_data_updates=False), home=tmp_path)
+    eng.set_hero("103")
+    eng.set_enemies(["99", "1", "63", "516", "51"], source="loading_ocr")
+    eng._set(
+        phase="client",
+        champ_select={
+            "bench": [],
+            "team": [],
+            "teammates": [
+                {"raw_name": "听过许多大道理#72642", "confidence": 0.97, "frames": 2, "uncertain": False, "rating": None},
+                {"raw_name": "二师兄威武#29987", "confidence": 0.99, "frames": 2, "uncertain": False, "rating": None},
+            ],
+            "teammates_status": "cached",
+        },
+    )
+    panel = ControlPanel(eng)
+    try:
+        panel.expanded = True
+        panel.update_from(eng.snapshot())
+        assert not panel.mate_bar.isHidden()
+        assert "听过许多大道理#72642" in panel.mate_label.text()
+        assert "阵容提示（规则·非统计）" in panel.info.text()
+        panel._copy_teammates()
+        assert PySide6.QApplication.clipboard().text() == "听过许多大道理#72642\n二师兄威武#29987"
+    finally:
+        panel.close()
+        panel.deleteLater()
         eng.stop()
         app.processEvents()

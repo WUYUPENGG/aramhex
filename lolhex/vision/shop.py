@@ -34,34 +34,39 @@ def _r(x0: float, y0: float, x1: float, y1: float) -> tuple[float, float, float,
 
 @dataclass(frozen=True)
 class ShopLayout:
-    """商店与底部 6 格装备栏的窗口比例坐标（1920×1080 基准，支持后续校准替换）。"""
+    """商店与底部 6 格装备栏的窗口比例坐标（按国服实机 4K/1080p 校准，支持后续替换）。"""
 
     anchor_box: tuple[float, float, float, float]
     grid_boxes: tuple[tuple[float, float, float, float], ...]
     inventory_boxes: tuple[tuple[float, float, float, float], ...]
+    grid_region: tuple[float, float, float, float] | None = None
 
 
 def default_layout() -> ShopLayout:
-    """默认 1920×1080 商店推荐/成装网格与底部装备栏比例布局（待实机截图校准）。"""
-    # 商店面板左上角「商店 / 装备」标题锚点区
-    anchor = _r(175, 118, 330, 162)
-    # 商店主展示区 4×3 常用装备格子（每格 48×48，间距 68×74）
+    """按国服实机截图校准的 1920×1080 基准商店与底部 6 格装备栏布局。"""
+    # 商店顶栏标签区：「推荐 | 所有物品 | 配装方案」
+    anchor = _r(336, 70, 998, 124)
+    # 商店主商品列表区域（用于滚动无关的动态行列网格检测）
+    grid_region = _r(399, 227, 970, 772)
+    # 静态网格兜底格子（1080p 基准：每格 38×38，列间距 55.5，行间距 75）
     grid = tuple(
-        _r(280 + col * 72, 260 + row * 78, 328 + col * 72, 308 + row * 78)
+        _r(413.5 + col * 55.5, 242 + row * 75, 451.5 + col * 55.5, 280 + row * 75)
         for row in range(3)
         for col in range(4)
     )
-    # 底部 HUD 6 格已购装备栏（2×3）
+    # 底部 HUD 6 格已购装备栏（2×3，4K 实机 6/6 @ 0.93–0.97 校准）
+    inv_xs = (1131.5, 1180.5, 1230.5)
+    inv_ys = (948.5, 993.5)
     inv = tuple(
-        _r(1118 + col * 36, 978 + row * 36, 1150 + col * 36, 1010 + row * 36)
-        for row in range(2)
-        for col in range(3)
+        _r(x, y, x + 40.0, y + 40.0)
+        for y in inv_ys
+        for x in inv_xs
     )
-    return ShopLayout(anchor_box=anchor, grid_boxes=grid, inventory_boxes=inv)
+    return ShopLayout(anchor_box=anchor, grid_boxes=grid, inventory_boxes=inv, grid_region=grid_region)
 
 
 DEFAULT_LAYOUT = default_layout()
-SHOP_MARKERS = ("商店", "装备", "所有装备", "推荐", "shop", "items")
+SHOP_MARKERS = ("所有物品", "配装方案", "推荐", "商店", "装备", "所有装备", "shop", "items", "recommended")
 
 
 def _square_feature(img: np.ndarray, inner: float = 0.78) -> np.ndarray | None:
@@ -193,12 +198,81 @@ def _pixel_box(box: tuple[float, float, float, float], w: int, h: int, origin: t
     return (int(x0 * w) + ox, int(y0 * h) + oy, int(x1 * w) + ox, int(y1 * h) + oy)
 
 
+def _looks_like_shop_chrome(img, anchor_box: tuple[float, float, float, float]) -> bool:
+    """<0.3ms 快速外观初筛：国服商店顶栏为深蓝黑面板（亮度低且背景均匀），用于未开商店时零开销跳过。"""
+    crop = _crop(img, anchor_box)
+    if crop is None or crop.size == 0:
+        return False
+    # 降采样快速判断：商店顶栏中位像素为深蓝黑（B/G/R 均偏暗，且 B >= R）
+    small = cv2.resize(crop, (48, 12), interpolation=cv2.INTER_AREA)
+    med = np.median(small.reshape(-1, 3), axis=0)
+    b, g, r = float(med[0]), float(med[1]), float(med[2])
+    return max(b, g, r) <= 75.0 and b + 8.0 >= r
+
+
+def detect_shop_grid(
+    img,
+    region: tuple[float, float, float, float],
+) -> list[tuple[float, float, float, float]]:
+    """滚动无关的 1D 边缘投影网格检测：在 1080p 归一化尺度下约 12ms 定位所有可见装备图标格。"""
+    if img is None or getattr(img, "size", 0) == 0:
+        return []
+    h, w = img.shape[:2]
+    sx0, sy0, sx1, sy1 = int(region[0] * w), int(region[1] * h), int(region[2] * w), int(region[3] * h)
+    roi = img[sy0:sy1, sx0:sx1]
+    if roi.size == 0 or min(roi.shape[:2]) < 40:
+        return []
+    scale = 1080.0 / float(h)
+    sw, sh = max(1, int(round(roi.shape[1] * scale))), max(1, int(round(roi.shape[0] * scale)))
+    small = cv2.resize(roi, (sw, sh), interpolation=cv2.INTER_AREA)
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+
+    gx = np.abs(cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3))
+    gy = np.abs(cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3))
+
+    row_sig = (gx > 25).mean(axis=1).astype(np.float32)
+    k_row = np.concatenate([np.full(10, -0.8), np.full(38, 1.0), np.full(10, -0.8)]).astype(np.float32)
+    rresp = np.convolve(row_sig, k_row[::-1], mode="same")
+    ys: list[int] = []
+    for idx in np.argsort(-rresp):
+        if rresp[idx] < 2.0:
+            break
+        if all(abs(int(idx) - y) >= 56 for y in ys):
+            ys.append(int(idx))
+    ys.sort()
+
+    col_sig = (gy > 25).mean(axis=0).astype(np.float32)
+    k_col = np.concatenate([np.full(6, -0.8), np.full(38, 1.0), np.full(6, -0.8)]).astype(np.float32)
+    cresp = np.convolve(col_sig, k_col[::-1], mode="same")
+    xs: list[int] = []
+    for idx in np.argsort(-cresp):
+        if cresp[idx] < 1.5:
+            break
+        if all(abs(int(idx) - x) >= 44 for x in xs):
+            xs.append(int(idx))
+    xs.sort()
+
+    if not ys or not xs:
+        return []
+    half = 19.5
+    boxes: list[tuple[float, float, float, float]] = []
+    for cy in ys:
+        for cx in xs:
+            x0 = (cx - half) / scale + sx0
+            y0 = (cy - half) / scale + sy0
+            x1 = (cx + half) / scale + sx0
+            y1 = (cy + half) / scale + sy0
+            if x0 >= 0 and y0 >= 0 and x1 <= w and y1 <= h:
+                boxes.append((x0 / w, y0 / h, x1 / w, y1 / h))
+    return boxes
+
+
 def is_shop_open(img, anchor_reader=None, layout: ShopLayout = DEFAULT_LAYOUT) -> bool:
-    """判断商店窗口是否打开：有 anchor_reader 时用单行文字校验（约 10ms），否则交由格子命中数判断。"""
+    """判断商店窗口是否打开：有 anchor_reader 时用单行文字校验（约 10ms），否则交由深色顶栏初筛与格子命中数判断。"""
     if img is None or getattr(img, "size", 0) == 0:
         return False
     if anchor_reader is None:
-        return True
+        return _looks_like_shop_chrome(img, layout.anchor_box)
     txt, score = anchor_reader(_crop(img, layout.anchor_box))
     low = (txt or "").strip().lower()
     return float(score or 0.0) >= 0.55 and any(k in low for k in SHOP_MARKERS)
@@ -212,7 +286,7 @@ def read_shop(
     layout: ShopLayout = DEFAULT_LAYOUT,
     anchor_reader=None,
     memo=None,
-    min_slots_without_anchor: int = 3,
+    min_slots_without_anchor: int = 4,
 ) -> dict:
     """截取游戏客户区 → {"open": bool, "slots": [...], "owned_items": [...]}。
 
@@ -220,22 +294,32 @@ def read_shop(
     """
     if img is None or getattr(img, "size", 0) == 0 or not len(bank):
         return {"open": False, "slots": [], "owned_items": []}
-    if anchor_reader is not None and not is_shop_open(img, anchor_reader, layout):
+    if not is_shop_open(img, anchor_reader, layout):
         return {"open": False, "slots": [], "owned_items": []}
 
     h, w = img.shape[:2]
     classify = (lambda key, crop: memo(key, crop, bank.classify, lambda m: m.sure)) if memo is not None else (lambda _k, crop: bank.classify(crop))
 
+    def _scan_boxes(boxes: list[tuple[float, float, float, float]] | tuple[tuple[float, float, float, float], ...], prefix: str) -> list[dict]:
+        found: list[dict] = []
+        for idx, rel in enumerate(boxes):
+            m = classify((prefix, idx), _crop(img, rel))
+            if m.sure:
+                found.append({
+                    "slot": idx,
+                    "item_id": m.item_id,
+                    "score": round(float(m.score), 3),
+                    "box": _pixel_box(rel, w, h, origin),
+                })
+        return found
+
     slots: list[dict] = []
-    for idx, rel in enumerate(layout.grid_boxes):
-        m = classify(("shop_grid", idx), _crop(img, rel))
-        if m.sure:
-            slots.append({
-                "slot": idx,
-                "item_id": m.item_id,
-                "score": round(float(m.score), 3),
-                "box": _pixel_box(rel, w, h, origin),
-            })
+    if layout.grid_region is not None:
+        dyn_boxes = detect_shop_grid(img, layout.grid_region)
+        if dyn_boxes:
+            slots = _scan_boxes(dyn_boxes, "shop_dyn")
+    if len(slots) < 2 and layout.grid_boxes:
+        slots = _scan_boxes(layout.grid_boxes, "shop_grid")
 
     if anchor_reader is None and len(slots) < min_slots_without_anchor:
         return {"open": False, "slots": [], "owned_items": []}

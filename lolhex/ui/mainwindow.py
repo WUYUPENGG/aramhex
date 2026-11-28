@@ -305,10 +305,23 @@ class MainWindow(QMainWindow):
         self.tab_hero.setWordWrap(True)
         self.tab_hero.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.tab_hero.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        # 未选英雄时的快捷英雄入口（热门/高胜率英雄一键预览出装与海克斯）
+        self.quick_heroes_box = QWidget()
+        qh_outer = QVBoxLayout(self.quick_heroes_box)
+        qh_outer.setContentsMargins(0, 8, 0, 0)
+        qh_outer.setSpacing(8)
+        self._quick_heroes_title = theme.mark(QLabel("快捷查看热门英雄出装（或按 Ctrl+K 搜索任意英雄）"), muted=True)
+        qh_outer.addWidget(self._quick_heroes_title)
+        self._quick_heroes_grid = QGridLayout()
+        self._quick_heroes_grid.setSpacing(8)
+        qh_outer.addLayout(self._quick_heroes_grid)
+        self._quick_heroes_loaded = False
         w1 = _page()
         l1 = QVBoxLayout(w1)
         l1.setContentsMargins(16, 14, 16, 14)
         l1.addWidget(self.tab_hero)
+        l1.addWidget(self.quick_heroes_box)
+        l1.addStretch(1)
         # 出装、加点很长：放进滚动区，不然页面按最高的一页定高度，选了英雄后设置页的「检查更新」被挤出窗口
         w1_scroll = QScrollArea()
         w1_scroll.setWidget(w1)
@@ -1350,11 +1363,48 @@ class MainWindow(QMainWindow):
         if d and self._panel_hero != key:
             self._panel_hero = key
             self.tab_hero.setText(self._hero_html(d, show_win))
+            if hasattr(self, "quick_heroes_box"):
+                self.quick_heroes_box.hide()
         elif not d:
             self._panel_hero = None
-            self.tab_hero.setText(f"<span style='color:{theme.MUTED}'>还没有选英雄</span>")
+            self.tab_hero.setText(self._empty_hero_html())
+            self._ensure_quick_heroes()
+            if hasattr(self, "quick_heroes_box"):
+                self.quick_heroes_box.show()
         self._render_offer(snap.get("evaluation"), show_win,
                            (snap.get("offer") or {}).get("pending_columns"))
+
+    def _empty_hero_html(self) -> str:
+        return (
+            f"<div style='padding:4px 0 8px 0'>"
+            f"<div style='font-size:16px;font-weight:700;color:{theme.TEXT};margin-bottom:6px'>还没有选英雄</div>"
+            f"<div style='color:{theme.TEXT_2};line-height:1.65'>"
+            f"· 进入大乱斗<b>选人界面</b>后会自动识别当前英雄、待选栏与聊天框队友 ID<br>"
+            f"· 对局中打开<b>商店（P）</b>会自动在「所有物品」页框选核心与常出装备<br>"
+            f"· 出现<b>海克斯三选一</b>时会在卡片旁实时标注首选与胜率增幅<br>"
+            f"· 若中途启动助手，可在上方搜索框（<code style='color:{theme.ACCENT}'>Ctrl+K</code>）或下方点选英雄立即查看"
+            f"</div></div>"
+        )
+
+    def _ensure_quick_heroes(self) -> None:
+        if getattr(self, "_quick_heroes_loaded", False) or not hasattr(self, "_quick_heroes_grid"):
+            return
+        if not hasattr(self.engine, "search_heroes"):
+            return
+        try:
+            top = self.engine.search_heroes("", limit=8)
+        except Exception:
+            return
+        if not top:
+            return
+        self._quick_heroes_loaded = True
+        for idx, h in enumerate(top[:8]):
+            win_str = f" {_pct(h.get('win'))}" if h.get("win") is not None else ""
+            grade = f"{h.get('grade')} · " if h.get("grade") else ""
+            btn = theme.mark(QPushButton(f"{grade}{h['name']}{win_str}"), pill=True)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.clicked.connect(lambda _=False, hid=h["id"]: self.engine.set_hero(hid))
+            self._quick_heroes_grid.addWidget(btn, idx // 4, idx % 4)
 
     def _hero_html(self, d, show_win) -> str:
         out = buildview.lines(d, self.engine.icons, show_win, size=28, muted=theme.MUTED)
@@ -1363,25 +1413,38 @@ class MainWindow(QMainWindow):
             out.append(sk)
         rules = d.get("rule_adjustments") or []
         if rules and getattr(self.engine.settings, "enemy_rules", True):
-            out.append(f"<b style='color:{theme.WARN}'>敌方阵容提示</b> "
-                       f"<span style='color:{theme.WARN}'>（规则推荐 · 非统计结论）</span>")
-            reason = rules[0].get("rule_reason")
-            if reason:
-                out.append(f"　<span style='color:{theme.TEXT_2}'>{escape(reason)}</span>")
+            rule_rows = []
             for r in rules:
                 extra = f" · 胜率 {_pct(r.get('base_win'))}" if show_win and r.get("base_win") is not None else ""
-                out.append(f"　<b style='color:{theme.WARN}'>{escape(r.get('name') or r.get('item_id', ''))}</b>"
-                           f"<span style='color:{theme.MUTED}'>（持有 {_pct(r.get('base_pick'))}{extra}）</span>")
+                rule_rows.append(
+                    f"<br><b style='color:{theme.WARN}'>{escape(r.get('name') or r.get('item_id', ''))}</b>"
+                    f"<span style='color:{theme.MUTED}'>（持有 {_pct(r.get('base_pick'))}{extra}）</span>"
+                )
+            out.append(
+                f"<div style='margin-top:6px;padding:8px 10px;border-radius:8px;"
+                f"background:{theme.WARN_BG};border:1px solid {theme.LINE}'>"
+                f"<b style='color:{theme.WARN}'>敌方阵容提示</b> "
+                f"<span style='color:{theme.WARN}'>（规则推荐 · 非统计结论）</span>"
+                + (f"<br><span style='color:{theme.TEXT_2}'>{escape(rules[0]['rule_reason'])}</span>" if rules[0].get("rule_reason") else "")
+                + "".join(rule_rows)
+                + "</div>"
+            )
         top = [a for a in d.get("augments", []) if a.get("delta") is not None and a.get("sample") != "low"]
         top.sort(key=lambda a: -a["delta"])
         if top:
-            out.append("<b>推荐海克斯</b>")
+            out.append(f"<div style='margin-top:8px;padding-top:8px;border-top:1px solid {theme.LINE}'><b>推荐海克斯</b></div>")
             for a in top[:8]:
                 d_col = theme.GOOD if a["delta"] >= 0 else theme.BAD
-                out.append(f"　{escape(a['name'])} <span style='color:{theme.MUTED}'>{RARITY_CN.get(a.get('rarity'), '')}"
-                           f" {a.get('tier') or ''}</span> <b style='color:{d_col}'>{a['delta']:+.1f}</b>")
+                rar = RARITY_CN.get(a.get("rarity"), "")
+                r_col = theme.PRISM if a.get("rarity") == "prismatic" else theme.WARN if a.get("rarity") == "gold" else theme.MUTED
+                out.append(
+                    f"　<b>{escape(a['name'])}</b> "
+                    f"<span style='color:{r_col}'>{rar}</span> "
+                    f"<span style='color:{theme.MUTED}'>{a.get('tier') or ''}</span> "
+                    f"<b style='color:{d_col}'>{a['delta']:+.1f}</b>"
+                )
         # 每行一段、留点间距：图标行直接换行会上下贴在一起
-        return "".join(f"<p style='margin:0 0 6px 0'>{line}</p>" for line in out)
+        return "".join(f"<div style='margin:0 0 7px 0'>{line}</div>" for line in out)
 
     def _render_offer(self, ev, show_win, pending=None):
         frames = getattr(self, "offer_frames", ())

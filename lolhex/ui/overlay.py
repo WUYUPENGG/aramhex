@@ -758,17 +758,20 @@ class ControlPanel(QWidget):
 
     # 详情的背景（详情里的「背景」按钮，1.2.0）。Qt 把 8 位颜色读成 #AARRGGBB：1.1.9 起写的
     # #101318ee 实际是透明度 0x10（约 6%）的蓝色，详情几乎是透明的，玩家说看不清字。「透明」保持这个样子（1.1.9），
-    # 半透明约 70%，不透明 100%，颜色都是本来想要的 #101318
-    PANEL_BG = {"standard": "#101318ee", "dark": "#b3101318", "solid": "#ff101318"}
+    # 半透明约 83%（Oil UI 墨石暗色卡片），不透明 100%
+    PANEL_BG = {"standard": "#101318ee", "dark": "#d4111622", "solid": "#ff111622"}
     bg_picked = Signal(str)  # 详情里点了「背景」按钮：要换成的那档，主界面存设置、生效
-    STYLE_BODY = ("QWidget#body{background:%s;border:1px solid #2c3240;border-radius:8px}"
-                  "QLabel{color:#e6e8ee;font:12px 'Microsoft YaHei UI'}"
-                  "QLineEdit{background:#0c0e12;color:#e6e8ee;border:1px solid #2c3240;border-radius:4px;padding:3px 6px}"
-                  "QPushButton{background:#1b2130;color:#e6e8ee;border:1px solid #2c3240;border-radius:4px;padding:2px 8px}"
-                  "QPushButton:hover{border-color:#62a8ff}")
+    STYLE_BODY = ("QWidget#body{background:%s;border:1px solid #334155;border-radius:10px}"
+                  "QLabel{color:#eef2f7;font:12px 'Microsoft YaHei UI'}"
+                  "QLineEdit{background:#0b0f17;color:#eef2f7;border:1px solid #334155;border-radius:6px;padding:4px 8px}"
+                  "QLineEdit:focus{border-color:#4ca3ff}"
+                  "QPushButton{background:#1b2333;color:#e6edf7;border:1px solid #334155;border-radius:6px;padding:3px 9px}"
+                  "QPushButton:hover{border-color:#4ca3ff;background:#233047}"
+                  "QPushButton[pill=\"true\"]{background:#1a2c44;color:#7ec0ff;border:1px solid #2b4870;border-radius:6px;padding:3px 9px;font-weight:600}"
+                  "QPushButton[pill=\"true\"]:hover{background:#223a5c;border-color:#4ca3ff}")
 
-    BTN_STYLE = ("QPushButton{background:#171a21ee;color:#e7c35a;border:1px solid #3a4150;border-radius:%dpx}"
-                 "QPushButton:hover{border-color:#62a8ff}")
+    BTN_STYLE = ("QPushButton{background:#141822ee;color:#e7c35a;border:1px solid #3a4558;border-radius:%dpx}"
+                 "QPushButton:hover{border-color:#4ca3ff}")
 
     def __init__(self, engine, corner: str = "top-right"):
         super().__init__()
@@ -844,6 +847,22 @@ class ControlPanel(QWidget):
         self.search_feedback.setWordWrap(True)
         self.search_feedback.setStyleSheet("color:#e7c35a")
         self.search_feedback.hide()
+        # 选人队友 ID 快捷复制条（识别到队友时自动显示在浮窗里，无需切回主窗口）
+        self.mate_bar = QWidget()
+        ml = QHBoxLayout(self.mate_bar)
+        ml.setContentsMargins(0, 2, 0, 2)
+        ml.setSpacing(6)
+        self.mate_label = QLabel()
+        self.mate_label.setTextFormat(Qt.RichText)
+        self.mate_label.setWordWrap(True)
+        self.btn_copy_mates = QPushButton("复制队友ID")
+        self.btn_copy_mates.setProperty("pill", True)
+        self.btn_copy_mates.setCursor(Qt.PointingHandCursor)
+        self.btn_copy_mates.clicked.connect(self._copy_teammates)
+        ml.addWidget(self.mate_label, 1)
+        ml.addWidget(self.btn_copy_mates, 0, Qt.AlignVCenter)
+        self._mate_names: list[str] = []
+        self.mate_bar.hide()
         self.info = QLabel()
         self.info.setTextFormat(Qt.RichText)
         self.info.setWordWrap(True)
@@ -853,6 +872,7 @@ class ControlPanel(QWidget):
         bl.addLayout(self.cands)
         bl.addLayout(search_row)
         bl.addWidget(self.search_feedback)
+        bl.addWidget(self.mate_bar)
         bl.addWidget(self.info)
         # 详情的背景：点一下换下一档，只有这里能换（云控 features.overlay_bg 关了不显示）
         self.bg_btn = QPushButton()
@@ -1078,6 +1098,16 @@ class ControlPanel(QWidget):
             from .mainwindow import quit_app
             quit_app(self.engine)
 
+    def _copy_teammates(self) -> None:
+        if not self._mate_names:
+            return
+        cb = QApplication.clipboard()
+        if cb is not None:
+            cb.setText("\n".join(self._mate_names))
+        self.btn_copy_mates.setText("已复制")
+        QTimer.singleShot(1500, lambda: self.btn_copy_mates.setText("复制队友ID"))
+        self.give_back_focus()
+
     def set_bg(self, level: str, shown: bool = True) -> None:
         """详情的背景（见 Overlay.apply_bg）。shown：详情里显示「背景」按钮。"""
         self.bg_level = level
@@ -1274,6 +1304,18 @@ class ControlPanel(QWidget):
 
         parts = []
         cs = snap.get("champ_select")
+        mates = (cs or {}).get("teammates") or []
+        mate_names = [m["raw_name"] for m in mates if m.get("raw_name")]
+        if mate_names:
+            self._mate_names = mate_names
+            preview = "、".join(escape(n) for n in mate_names[:4])
+            self.mate_label.setText(f"<span style='color:#93c5fd'><b>队友({len(mate_names)})</b></span>：{preview}")
+            if not self.mate_bar.isVisible():
+                self.mate_bar.show()
+        else:
+            self._mate_names = []
+            if self.mate_bar.isVisible():
+                self.mate_bar.hide()
         if cs and (cs.get("bench") or cs.get("cards")):
             parts.append(champ_select_summary(cs, show_win))
         ev = snap.get("evaluation")
@@ -1289,6 +1331,11 @@ class ControlPanel(QWidget):
             sk = buildview.skills_line(d, show_win)
             if sk:
                 parts.append(sk)
+            rules = d.get("rule_adjustments") or []
+            if rules and snap.get("settings", {}).get("enemy_rules", True):
+                r_names = "、".join(escape(r.get("name") or str(r.get("item_id") or "")) for r in rules[:3])
+                reason = escape(rules[0].get("rule_reason") or "按敌方阵容建议提前补抗性")
+                parts.append(f"<span style='color:#fbbf24'><b>阵容提示（规则·非统计）</b>：{reason} → <b>{r_names}</b></span>")
             top = [a for a in d.get("augments", []) if a.get("delta") is not None and a.get("sample") != "low"]
             top.sort(key=lambda a: -a["delta"])
             if top:

@@ -27,13 +27,15 @@ def _r(x0: float, y0: float, x1: float, y1: float) -> tuple[float, float, float,
     return (x0 / REF_W, y0 / REF_H, x1 / REF_W, y1 / REF_H)
 
 
-CHAT_BOX = _r(24, 750, 495, 1020)
+CHAT_BOX = _r(20, 740, 525, 1020)
 
-# 常见进场系统提示：中/繁/英客户端兼容
+# 常见进场系统提示：中/繁/英客户端兼容（含 RapidOCR 将「聊天」误读为「聊大」的容错）
 _JOIN_PATTERNS = (
-    re.compile(r"^\s*(?:\[[^\]]+\]\s*)?(.+?)\s*(?:加入了(?:房间|大厅|队伍聊天|聊天室)|已加入(?:房间|大厅|队伍))\s*[。!！.]*$"),
+    re.compile(r"^\s*(?:\[[^\]]+\]\s*)?(.+?)\s*(?:加入了?(?:房间|大厅|队伍聊[天大]|聊天室|队伍)|已加入(?:房间|大厅|队伍))\s*[。!！.]*$"),
     re.compile(r"^\s*(?:\[[^\]]+\]\s*)?(.+?)\s+joined\s+the\s+(?:lobby|room|team\s+chat)\s*[.!]*$", re.IGNORECASE),
 )
+# 聊天框进场提示被 WeGame / 队友发言顶出画面后，兜底从带「#数字编号:」的发言前缀提取 Riot ID
+_SPEAKER_PATTERN = re.compile(r"^\s*(?:\[[^\]]+\]\s*)?(.+?\s*#\s*\d{3,6})\s*[:：]\s*.+$")
 _NOISE_PREFIX = re.compile(r"^[\s\[\(（·•\-—:>]+")
 _NOISE_SUFFIX = re.compile(r"[\s\]\)）·•\-—:,，。!！]+$")
 
@@ -69,11 +71,11 @@ def preprocess_chat(crop: np.ndarray, *, scale: float = 2.0) -> np.ndarray:
 
 
 def parse_join_line(text: str) -> str | None:
-    """从单行聊天 OCR 文本提取召唤师 ID；非进场系统消息返回 None。"""
+    """从单行聊天 OCR 文本提取召唤师 ID（支持进场提示及带 #编号 的发言前缀）；普通闲聊返回 None。"""
     if not text:
         return None
     cleaned = " ".join(str(text).split())
-    for pat in _JOIN_PATTERNS:
+    for pat in (*_JOIN_PATTERNS, _SPEAKER_PATTERN):
         m = pat.match(cleaned)
         if not m:
             continue
